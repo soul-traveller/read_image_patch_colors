@@ -1,0 +1,14 @@
+theme: jekyll-theme-cayman
+markdown: kramdown
+
+title: "read_image_patch_colors – Read image grid patches and store colors in ArgyllCMS compatible files."
+description: "Generate ArgyllCMS compatible .ti1 and .ti2 files from a grid of color patches in an image."
+author: "Knut Larsson"
+lang: en
+keywords: "read_image_patch_colors, color management, color science, colorimetric processing, colorimetry, CIE Lab, CIE XYZ, D50 adaptation, D65 input, RGB color space, sRGB, AdobeRGB, gamma 2.2, display-referred image, image patch sampling, color patch grid, printed color targets, scanned color targets, photographed color targets, patch measurement, patch sampling, sampling mean, sampling median, sampling fraction, patch geometry, patch center coordinates, patch grid detection, grid geometry calculation, image processing, 16-bit RGB processing, python colormath, Python Pillow, numpy, ArgyllCMS, Argyll CMS, ArgyllCMS TI1, ArgyllCMS TI2, TI1 file, TI2 file, CSV output, scanner profiling, printer profiling, color target extraction, printtarg, scanin, ICC profiling workflow, measurement file generator, color workflow automation, label patterns, alphabetic labels, numeric labels, row labels, column labels, patch indexing, label parsing, patch label order, col_then_row, row_then_col, XYZ scaling, Lab calculation, white point estimation, APPROX_WHITE_POINT, color token validation, RGB XYZ LAB output, output_color_space, CLI tool, command-line utility, Python CLI, image-based chart extraction, patch value normalization, 8-bit to 16-bit scaling, color accuracy, measurement error checking, SpyderPrint target, SpyderPrint grid, Datacolor target, LaserSoft target, 9x12 target, 10x12 target, 15x15 target, 17x14 target, 18x14 target, 27x27 target, 36x26 target, color target detection, chart extraction, calibration chart processing, high accuracy sampling, workflow automation, Python color processing, image measurement tool, patch-based measurement, color calibration, photography calibration, scanner calibration, printer calibration, ICC profile generation, color profiling pipeline, color conversion, RGB to XYZ conversion, XYZ to Lab conversion, chromatic adaptation, Bradford adaptation, measurement grid, patch coordinate interpolation, data formatting, TI2 index patterns, strip index pattern, patch index pattern, target chart information, color sampling script, color extraction script, Python color tools"
+
+plugins:
+  - jekyll-sitemap
+
+url: "https://soul-traveller.github.io"
+baseurl: "/read_image_patch_colors"
