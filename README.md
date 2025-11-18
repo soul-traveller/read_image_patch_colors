@@ -6,4 +6,5 @@ ArgyllCMS .ti1 file
 ArgyllCMS .ti2 file
 CSV file (space-separated)
 
-See full Reference and Usage Guide
+See full Reference and Usage Guide:
+https://soul-traveller.github.io/read_image_patch_colors/
