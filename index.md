@@ -6,6 +6,7 @@
 
 ## Table of Contents
 - [Overview](#overview)
+- [Examples Included](#examples-included)
 - [Command-line Arguments](#command-line-arguments)
 - [Image Input](#image-input)
 - [Grid Geometry](#grid-geometry)
@@ -39,6 +40,21 @@ Example use cases:
 1. Using the image of a reference target, create a `.ti1` file so thatn one may use ArgyllCMS `printtarg` command and generate a target using the colors of the image, which then can be used to create a printer profile.
 
 2. Using the image of a reference target, create a `.ti2` file so that one may print the target, scan it, and then use ArgyllCMS `scanin` command to create a printer profile.
+
+# Examples Included
+See chapter [Examples](#examples) for detailed examples on how to read patches from different size patch grid images. Most examples are based on Datacolor SpyderPrint Targets, which are:
+
+- Expert Target (3-pages, 729-patches)
+- Expert Target (large) (1-page, 729-patches)
+- Expert Target Plus Grays (4-pages, 967-patches)
+- EZ 729 Colors Plus Grays (9-pages, 996-patches)
+- High Quality Target (1-page, 225-patches)
+- High Quality Target Plus Grays (2-pages, 463-patches)
+- LaserSoft Advanced Target
+
+Target images used for creating .ti1, .ti2 and .csv files are under folder [Example Targets Read](https://github.com/soul-traveller/read_image_patch_colors/tree/main/Example%20Targets%20Read).
+
+One example of generating an ArgyllCMS printtarg target for SpyderPrint High Quality Target (225-patches) is also included.
 
 # Command-line Arguments
 | Argument                     | Description                                                                                                                                                                                                                                                                                                                             |
