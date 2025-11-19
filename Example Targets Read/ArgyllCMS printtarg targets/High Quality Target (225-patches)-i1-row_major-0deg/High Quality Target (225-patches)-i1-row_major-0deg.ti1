@@ -2,7 +2,7 @@ CTI1
 
 DESCRIPTOR "Argyll Calibration Target chart information 1"
 ORIGINATOR "read_image_patch_colors.py (colormath backend)"
-CREATED "Wed Nov 19 22:42:22 2025"
+CREATED "Wed Nov 19 21:28:44 2025"
 ACCURATE_EXPECTED_VALUES "true"
 APPROX_WHITE_POINT "96.420986 99.999714 82.531487"
 COLOR_REP "iRGB"
@@ -245,7 +245,7 @@ CTI1
 DESCRIPTOR "Argyll Calibration Target chart information 1"
 ORIGINATOR "Argyll targen"
 DENSITY_EXTREME_VALUES "8"
-CREATED "Wed Nov 19 22:42:22 2025"
+CREATED "Wed Nov 19 21:28:44 2025"
 
 NUMBER_OF_FIELDS "7"
 BEGIN_DATA_FORMAT
@@ -268,7 +268,7 @@ CTI1
 DESCRIPTOR "Argyll Calibration Target chart information 1"
 ORIGINATOR "Argyll targen"
 DEVICE_COMBINATION_VALUES "9"
-CREATED "Wed Nov 19 22:42:22 2025"
+CREATED "Wed Nov 19 21:28:44 2025"
 
 NUMBER_OF_FIELDS "7"
 BEGIN_DATA_FORMAT

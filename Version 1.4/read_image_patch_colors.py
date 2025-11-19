@@ -435,6 +435,10 @@ from colormath.color_objects import sRGBColor, AdobeRGBColor, XYZColor, LabColor
 from colormath.color_conversions import convert_color
 
 # ---------- Constants ----------
+DEBUG = False
+DEBUG_PRINT_LIMIT = 10
+DEBUG_AVG_COUNTER = 0
+DEBUG_SAMPLE_COUNTER = 0
 # Reference white D50 (used in Lab conversion)
 D50_X = 96.422
 D50_Y = 100.000
@@ -641,17 +645,74 @@ def load_image_as_16bit_rgb(img_path: str) -> Tuple[np.ndarray, int]:
         return arr16, 16
 
 
-# Compute the mean or median RGB value of a block of pixels.
-# Input: block (HxWx3 ndarray), mode: 'mean' or 'median'
-# Output: 1x3 ndarray floats (0..65535)
-def average_block_rgb16(block: np.ndarray, mode: str = 'mean') -> np.ndarray:
+# Compute the RGB value of a patch using different aggregation modes.
+# Input:
+#    block : (H x W x 3) ndarray, 16-bit values already loaded as uint16
+#    mode  : 'mean'   – simple arithmetic mean (not robust to outliers)
+#            'median' – statistically robust, but less efficient for smooth gradients
+#            'mad'    – MAD-based sigma-clipped robust mean (default)
+# Output:
+#    1x3 ndarray of float64 RGB values in the 0..65535 range
+#
+# Notes:
+#   - 'mad' mode is recommended for scanned/photographic data where dust,
+#     specks, and sensor defects introduce heavy-tailed noise.
+#   - Only the selected mode is returned. There is no post-override.
+def average_block_rgb16(block: np.ndarray, mode: str = 'mad') -> np.ndarray:
+    global DEBUG_AVG_COUNTER
+
     if block.size == 0:
         return np.array([0.0, 0.0, 0.0], dtype=np.float64)
+
     arr = block.reshape(-1, 3).astype(np.float64)
+
+    # ----- simple mean -----
+    if mode == 'mean':
+        return arr.mean(axis=0)
+
+    # ----- simple median -----
     if mode == 'median':
         return np.median(arr, axis=0)
-    else:
-        return arr.mean(axis=0)
+
+    # ----- robust MAD-sigma-clipped mode -----
+    def robust_channel_mean(values: np.ndarray, k: float = 3.0, min_sigma: float = 1.0) -> float:
+        if values.size == 0:
+            return 0.0
+        med = np.median(values)
+        mad = np.median(np.abs(values - med))
+        # Convert MAD → robust sigma estimate with minimum floor
+        sigma = max(1.4826 * mad, min_sigma)
+        # sigma-based threshold
+        abs_thresh = k * sigma
+        mask = np.abs(values - med) <= abs_thresh
+        if mask.sum() == 0:
+            # If all rejected, use median
+            return float(med)
+        return float(values[mask].mean())
+
+    # Apply per-channel MAD clipping
+    r = robust_channel_mean(arr[:, 0])
+    g = robust_channel_mean(arr[:, 1])
+    b = robust_channel_mean(arr[:, 2])
+    robust_mean = np.array([r, g, b], dtype=np.float64)
+
+    # Debug native and robust mean for first 10 MAD patches
+    if DEBUG and mode == 'mad' and DEBUG_AVG_COUNTER < DEBUG_PRINT_LIMIT:
+        patch_num = DEBUG_AVG_COUNTER + 1
+        print(f"--- PATCH {patch_num} ---")
+        print(f"Naive mean (16-bit): {arr.mean(axis=0)}")
+        print(f"Robust mean (16-bit): {robust_mean}")
+        # Show MAD / sigma info per channel
+        for i, ch in enumerate(["R", "G", "B"]):
+            med = np.median(arr[:, i])
+            mad = np.median(np.abs(arr[:, i] - med))
+            sigma = max(1.4826 * mad, 1.0)
+            mask = np.abs(arr[:, i] - med) <= 3 * sigma
+            rejected = (~mask).sum()
+            print(f"{ch}-channel: median={med:.1f}, MAD={mad:.1f}, sigma={sigma:.1f}, outliers removed={rejected}")
+        DEBUG_AVG_COUNTER += 1
+
+    return robust_mean
 
 
 # Convert 16-bit RGB to Argyll iRGB percentage (0.0 .. 100.0)
@@ -812,8 +873,9 @@ def compute_grid_geometry(args) -> GridGeometry:
 # Input: img16 (HxWx3 uint16 array), cx, cy center coords (float), half (int), sample_mode ('mean'|'median')
 # Output: 1x3 ndarray averaged rgb16 values (float)
 def sample_patch(img16: np.ndarray, cx: float, cy: float, half: int, sample_mode: str) -> np.ndarray:
-    height, width, _ = img16.shape
+    global DEBUG_SAMPLE_COUNTER
 
+    height, width, _ = img16.shape
     # Compute pixel bounds of the sampling square
     x0 = int(round(cx)) - half
     x1 = int(round(cx)) + half + 1
@@ -831,12 +893,64 @@ def sample_patch(img16: np.ndarray, cx: float, cy: float, half: int, sample_mode
         return np.zeros(3, dtype=np.float64)
 
     block = img16[y0c:y1c, x0c:x1c, :]
-    return average_block_rgb16(block, mode=sample_mode)
+
+    # ---- DEBUG BLOCK: prints for first 10 patches ----
+    if DEBUG and DEBUG_SAMPLE_COUNTER < DEBUG_PRINT_LIMIT:
+        patch_num = DEBUG_SAMPLE_COUNTER + 1
+        flat = block.reshape(-1, 3).astype(np.float64)
+        mins = flat.min(axis=0)
+        maxs = flat.max(axis=0)
+        medians = np.median(flat, axis=0)
+        means = flat.mean(axis=0)
+        stds = flat.std(axis=0)
+
+        print(f"\n=== PATCH {patch_num} ===")
+        print(f"Block shape: {block.shape}, dtype: {block.dtype}")
+        print(f"Min / Max per channel: {mins} / {maxs}")
+        print(f"Median / Mean / Std per channel: {medians} / {means} / {stds}")
+
+        # Show a small random sample of pixel values
+        sample_indices = np.random.choice(flat.shape[0], min(30, flat.shape[0]), replace=False)
+        print("Random Pixel samples (R,G,B):", flat[sample_indices])
+
+        try:
+            from PIL import Image
+            block8 = np.round(block / 257.0).clip(0, 255).astype(np.uint8)
+            debug_path = f"debug_patch_{patch_num}.png"
+            Image.fromarray(block8, mode='RGB').save(debug_path)
+            print(f"Saved block image: {debug_path}")
+        except Exception as e:
+            print(f"Failed to save block image: {e}")
+
+        DEBUG_SAMPLE_COUNTER += 1
+    # ---- END DEBUG BLOCK ----
+
+    avg_rgb16 = average_block_rgb16(block, mode=sample_mode)
+    return avg_rgb16
 
 
 # Extract measurements for all patches in the grid.
-# Input: img16, geometry, row_labels, col_labels, pad info, label ordering, image_color_space, sample_mode
-# Output: (patches: List[PatchInfo], white_point_xyz, black_point_xyz)
+# Traverses the patch grid either row-major (default: row by row) or column-major (column by column),
+# optionally reversing the order of patches per row (row-major) or per column (column-major) if mirror_output=True.
+#
+# Input:
+#   img16             : HxWx3 uint16 array representing the image
+#   geometry          : GridGeometry object with patch layout and spacing
+#   row_labels        : list of row labels (strings)
+#   col_labels        : list of column labels (strings)
+#   row_pad           : optional int, whether row labels should be zero-padded
+#   col_pad           : optional int, whether column labels should be zero-padded
+#   patch_label_order : 'col_then_row' or 'row_then_col', determines label composition
+#   image_color_space : string, color space of input image ('srgb', 'adobergb', etc.)
+#   sample_mode       : 'mean' or 'median', aggregation method for patch sampling
+#   output_order      : 'row_major' or 'column_major', controls traversal order
+#   mirror_output     : bool, if True reverses order of patches per row (row-major) or per column (column-major)
+#   rotate_grid       : integer, degrees to rotate grid clockwise.
+#
+# Output:
+#   patches           : List[PatchInfo] objects with measured RGB, XYZ, LAB, label, and index
+#   white_point_xyz   : XYZ coordinates of the patch with highest Y luminance
+#   black_point_xyz   : XYZ coordinates of the patch with lowest Y luminance
 def extract_patch_data(
     img16: np.ndarray,
     geometry: GridGeometry,
@@ -846,7 +960,10 @@ def extract_patch_data(
     col_pad: Optional[int],
     patch_label_order: str,
     image_color_space: str,
-    sample_mode: str
+    sample_mode: str,
+    output_order: str,
+    mirror_output: bool,
+    rotate_grid: int
 ) -> Tuple[List[PatchInfo], np.ndarray, np.ndarray]:
 
     patches: List[PatchInfo] = []
@@ -854,47 +971,155 @@ def extract_patch_data(
     white_point_xyz = None
     black_point_xyz = None
 
-    for row in range(geometry.num_rows):
-        for col in range(geometry.num_cols):
-            patch_idx += 1
+    # ------------------------------------------------------
+    # ROW-MAJOR ORDER
+    # ------------------------------------------------------
+    if output_order == "row_major":
 
-            # Build textual label for the patch using pad rules
-            rlab = row_labels[row]
-            clab = col_labels[col]
-            if row_pad == 1:
-                rlab = str(int(rlab))
-            if col_pad == 1:
-                clab = str(int(clab))
-            patch_label = f"{clab}{rlab}" if patch_label_order == "col_then_row" else f"{rlab}{clab}"
+        for row in range(geometry.num_rows):
+            for col in range(geometry.num_cols):
 
-            # Compute patch centre coordinates
-            cx = geometry.fx + col * geometry.dx
-            cy = geometry.fy + row * geometry.dy
+                patch_idx += 1
 
-            # Sample patch, compute percentages and colorimetric values
-            avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
-            rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-            xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space)
-
-            # Luminance Y used for white/black point detection
-            Y_lum = float(xyz100[1])
-            if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
-                white_point_xyz = xyz100.copy()
-            if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
-                black_point_xyz = xyz100.copy()
-
-            patches.append(
-                PatchInfo(
-                    index=patch_idx,
-                    label=patch_label,
-                    rgb16=avg_rgb16,
-                    rgb_percent=rgb_percent,
-                    xyz100=xyz100,
-                    lab=lab_float
+                rlab = row_labels[row]
+                clab = col_labels[col]
+                if row_pad == 1:
+                    rlab = str(int(rlab))
+                if col_pad == 1:
+                    clab = str(int(clab))
+                patch_label = (
+                    f"{clab}{rlab}"
+                    if patch_label_order == "col_then_row"
+                    else f"{rlab}{clab}"
                 )
-            )
+
+                cx = geometry.fx + col * geometry.dx
+                cy = geometry.fy + row * geometry.dy
+
+                avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
+                rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
+                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space)
+
+                Y_lum = float(xyz100[1])
+                if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
+                    white_point_xyz = xyz100.copy()
+                if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
+                    black_point_xyz = xyz100.copy()
+
+                patches.append(
+                    PatchInfo(
+                        index=patch_idx,
+                        label=patch_label,
+                        rgb16=avg_rgb16,
+                        rgb_percent=rgb_percent,
+                        xyz100=xyz100,
+                        lab=lab_float
+                    )
+                )
+
+        # ----- Rotate grid before mirroring -----
+        if rotate_grid != 0:
+            # After building patches, reshape into 2D grid
+            patch_grid = np.array(patches, dtype=object).reshape((geometry.num_rows, geometry.num_cols))
+            # Apply rotation
+            k = rotate_grid // 90  # np.rot90 rotates counter-clockwise
+            patch_grid = np.rot90(patch_grid, k=k)
+            # Flatten back to list in row-major order
+            patches = patch_grid.flatten().tolist()
+            # Update indices
+            for i, p in enumerate(patches, start=1):
+                p.index = i
+
+        # ------------------------------------------------------
+        # Row-based mirroring
+        # ------------------------------------------------------
+        if mirror_output:
+            mirrored = []
+            for r in range(geometry.num_rows):
+                start = r * geometry.num_cols
+                end = start + geometry.num_cols
+                row_patches = patches[start:end]
+                mirrored.extend(row_patches[::-1])
+            patches = mirrored
+
+            for i, p in enumerate(patches, start=1):
+                p.index = i
+
+    # ------------------------------------------------------
+    # COLUMN-MAJOR ORDER
+    # ------------------------------------------------------
+    else:  # column_major
+
+        for col in range(geometry.num_cols):
+            for row in range(geometry.num_rows):
+
+                patch_idx += 1
+
+                rlab = row_labels[row]
+                clab = col_labels[col]
+                if row_pad == 1:
+                    rlab = str(int(rlab))
+                if col_pad == 1:
+                    clab = str(int(clab))
+                patch_label = (
+                    f"{clab}{rlab}"
+                    if patch_label_order == "col_then_row"
+                    else f"{rlab}{clab}"
+                )
+
+                cx = geometry.fx + col * geometry.dx
+                cy = geometry.fy + row * geometry.dy
+
+                avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
+                rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
+                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space)
+
+                Y_lum = float(xyz100[1])
+                if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
+                    white_point_xyz = xyz100.copy()
+                if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
+                    black_point_xyz = xyz100.copy()
+
+                patches.append(
+                    PatchInfo(
+                        index=patch_idx,
+                        label=patch_label,
+                        rgb16=avg_rgb16,
+                        rgb_percent=rgb_percent,
+                        xyz100=xyz100,
+                        lab=lab_float
+                    )
+                )
+
+        # ----- Rotate grid before mirroring -----
+        if rotate_grid != 0:
+            # After building patches, reshape into 2D grid
+            patch_grid = np.array(patches, dtype=object).reshape((geometry.num_rows, geometry.num_cols))
+            # Apply rotation
+            k = rotate_grid // 90  # np.rot90 rotates counter-clockwise
+            patch_grid = np.rot90(patch_grid, k=k)
+            # Flatten back to list in column-major order
+            patches = patch_grid.flatten().tolist()
+            # Update indices
+            for i, p in enumerate(patches, start=1):
+                p.index = i
+
+        # ------------------------------------------------------
+        # Column-major mirroring (per column)
+        # ------------------------------------------------------
+        if mirror_output:
+            mirrored = []
+            for c in range(geometry.num_cols):
+                col_indices = range(c * geometry.num_rows, (c + 1) * geometry.num_rows)
+                col_patches = [patches[i] for i in col_indices]
+                mirrored.extend(col_patches[::-1])  # vertical flip
+            patches = mirrored
+
+            for i, p in enumerate(patches, start=1):
+                p.index = i
 
     return patches, white_point_xyz, black_point_xyz
+
 
 
 # -------- File Writers --------
@@ -1169,7 +1394,10 @@ def process_image_to_files(args):
         col_pad,
         args.patch_label_order,
         image_color_space,
-        args.sample_mode
+        args.sample_mode,
+        args.output_order,
+        args.mirror_output,
+        args.rotate_grid
     )
 
     base_out = os.path.splitext(os.path.basename(args.image))[0]
@@ -1223,14 +1451,41 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument('--patch_label_order', required=True, choices=["col_then_row", "row_then_col"])
     p.add_argument('--output_color_space', required=True,
                    help='Comma-separated sequence of color spaces to include: RGB, XYZ, LAB')
-    p.add_argument('--sample_mode', default='mean', choices=['mean', 'median'], help='Sampling aggregation method')
+    p.add_argument(
+        '--sample_mode',
+        default='mad',
+        choices=['mean', 'median', 'mad'],
+        help=(
+            "Sampling aggregation method:\n"
+            "  mean   – plain arithmetic mean (sensitive to outliers)\n"
+            "  median – pure median (very robust, but may bias bright/dark values)\n"
+            "  mad    – robust mean using MAD-based sigma clipping (default)"
+        )
+    )
+    p.add_argument('--output_order', default='row_major', choices=['row_major', 'column_major'], help='Output patch data one row at a time (row_major), or one column at a time (column_major). Applied before rotate_grid and mirror_output')
+    p.add_argument('--mirror_output', action='store_true', help='Output patch data with reversed traversal. If row_major then reversed column traversal. If column_major then reversed row traversal. Applied after output_order and rotate_grid.')
+    p.add_argument(
+        '--rotate_grid',
+        default=0,
+        type=int,
+        choices=[0, 90, 180, 270],
+        help='Rotate the patch grid by 0 (default), 90, 180, or 270 degrees clockwise before output. Applied after output_order and before mirror_output.'
+    )
     p.add_argument('--output', help='Optional base name for output TI1/TI2/CSV files')
+    p.add_argument('--debug', action='store_true',
+                   help='Enable diagnostic debug printing for the first patch')
     return p
 
 
 def main():
+    global DEBUG, DEBUG_AVG_COUNTER, DEBUG_SAMPLE_COUNTER
+
     parser = build_arg_parser()
     args = parser.parse_args()
+
+    DEBUG = args.debug
+    DEBUG_AVG_COUNTER = 0
+    DEBUG_SAMPLE_COUNTER = 0
     try:
         process_image_to_files(args)
     except ValueError as e:

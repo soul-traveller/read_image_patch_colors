@@ -6,6 +6,7 @@
 
 ## Table of Contents
 - [Overview](#overview)
+- [Command-line Arguments](#command-line-arguments)
 - [Image Input](#image-input)
 - [Grid Geometry](#grid-geometry)
 - [Sampling](#sampling)
@@ -15,7 +16,6 @@
 - [Patch Value Ranges](#patch-value-ranges)
 - [Valid Color Blocks](#valid-color-blocks)
 - [Dependencies](#dependencies)
-- [Command-line Arguments](#command-line-arguments)
 - [Notes on Accuracy](#notes-on-accuracy)
 - [Patch Sampling Method](#patch-sampling-method)
 - [Output File Format (TI2)](#output-file-format-ti2)
@@ -39,6 +39,28 @@ Example use cases:
 1. Using the image of a reference target, create a `.ti1` file so thatn one may use ArgyllCMS `printtarg` command and generate a target using the colors of the image, which then can be used to create a printer profile.
 
 2. Using the image of a reference target, create a `.ti2` file so that one may print the target, scan it, and then use ArgyllCMS `scanin` command to create a printer profile.
+
+# Command-line Arguments
+| Argument                     | Description                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--image` / `-i`             | **(Required)** Path to the input image containing the colour-patch grid. Image must be a *display-referred*, D65-based RGB image encoded using a **2.2 gamma** transfer curve (typical scanned/photographed targets).                                                                                                                   |
+| `--image_color_space`        | Input image device colour space. Determines RGB→XYZ conversion matrix. Options:<br>• `srgb` *(default)*<br>• `adobergb`                                                                                                                                                                                                                 |
+| `--patch_first_xy`           | **(Required)** `"X,Y"` coordinates of the **centre of the first patch** (top-left). Accepts integers or floats.                                                                                                                                                                                                                         |
+| `--patch_last_xy`            | **(Required)** `"X,Y"` coordinates of the **centre of the last patch** (bottom-right). Accepts integers or floats.                                                                                                                                                                                                                      |
+| `--patch_width_height_ratio` | **(Required)** Width ÷ Height ratio (W/H) of a single patch.<br>Examples: `1.0` (square), `1.378`, etc.                                                                                                                                                                                                                                 |
+| `--num_cols`                 | **(Required)** Number of columns in the grid.                                                                                                                                                                                                                                                                                           |
+| `--num_rows`                 | **(Required)** Number of rows in the grid.                                                                                                                                                                                                                                                                                              |
+| `--sample_fraction`          | Fraction of patch area to sample (float). Default: **0.20** (20%).<br>Constraints: `0 < f ≤ 0.6`.<br>The sampling area is a centered square clamped to at least **3×3 px** and at most **60%** of patch size.                                                                                                                           |
+| `--row_labels`               | **(Required)** Label sequence for rows. Must match `num_rows` exactly.<br>Allowed patterns:<br>• **Numeric ranges:** `1-15`, `03-12`, `0001-0120` (zero-padding preserved)<br>• **Alphabetic ranges:** `A-Z`, `A-AC`, `BQ-CF`, up to `ZZ`<br>**Note:** Rows and columns must use *different* types (numeric ↔ alphabetic).              |
+| `--col_labels`               | **(Required)** Label sequence for columns (same rules as `row_labels`).                                                                                                                                                                                                                                                                 |
+| `--patch_label_order`        | **(Required)** Determines patch label composition:<br>• `col_then_row` → e.g. `A12`<br>• `row_then_col` → e.g. `12A`                                                                                                                                                                                                                    |
+| `--output_color_space`       | **(Required)** Comma-separated list specifying which colour spaces to output (in order). Allowed tokens:<br>• `RGB`<br>• `XYZ`<br>• `LAB`<br>Rules:<br>• TI1 can include only RGB and/or XYZ<br>• TI2/CSV include all listed tokens<br>Examples:<br>`RGB,XYZ` → TI1: RGB,XYZ; TI2: RGB,XYZ.<br>`XYZ,LAB,RGB` → TI1: XYZ,RGB; TI2: XYZ,LAB,RGB. |
+| `--sample_mode`              | Patch sampling aggregation method:<br>• `mean` – arithmetic mean (not robust)<br>• `median` – robust, but biases asymmetric patches<br>• `mad` *(default)* – robust mean via MAD-based sigma clipping                                                                                                                                   |
+| `--output_order`             | Determines initial traversal order before rotation/mirroring, if applied:<br>• `row_major` *(default)*: iterate row by row (top→bottom, left→right)<br>• `column_major`: iterate column by column (left→right, top→bottom)<br>Applied **first**, before `rotate_grid` and `mirror_output`.                                                          |
+| `--mirror_output`            | Reverse traversal **after** output\_order and rotate\_grid:<br>• If `row_major`: reverse column labels for each row (vertical flip).<br>• If `column_major`: reverse row labels for each column (horizontal flip).                                                                                                                                                            |
+| `--rotate_grid`              | Rotate the entire patch grid **clockwise** before mirroring (if mirror\_output applied). Allowed values:<br>• `0` *(default)*<br>• `90` – rotate 90° CW<br>• `180` – rotate 180°<br>• `270` – rotate 270° CW<br>Applied **after output\_order**, **before mirror_output**.                                                                                           |
+| `--output`                   | Base filename for generated `.ti1`, `.ti2`, and `.csv` output files.<br>If omitted, filenames are based on the input image name.                                                                                                                                                                                                        |
+| `--debug`                    | Enable diagnostic printing for the first few patches. Shows sampling geometry, pixel statistics, and intermediate RGB calculations.                                                                                                                                                                                                     |
 
 # Image Input
 Accepted image types: any PIL-compatible raster file
@@ -67,10 +89,11 @@ Parameter: `--sample_fraction`
 Range: `0 < f ≤ 0.6`
 Defines fraction of the *smaller* patch dimension used for sampling.
 
-Sampling modes:
+Sampling modes (parameter `--sample_mode`):
 
-- “mean”
-- “median”
+- mean   – plain arithmetic mean (sensitive to outliers)
+- median – pure median (very robust, but may bias bright/dark values)
+- mad    – robust mean using MAD-based sigma clipping (default)
 
 Sampling region is square, centered in each patch.
 
@@ -144,23 +167,6 @@ Order controls column order in TI1/TI2/CSV.
 - numpy
 - Pillow
 - colormath
-
-# Command-line Arguments
-| Argument | Description |
-|---------|-------------|
-| `--image` / `-i` | Path to input image containing colour patch grid. Input image must be a display-referred D65-based RGB image encoded with a 2.2 gamma transfer curve. |
-| `--image_color_space` | **[Optional]** Input image device colour space; choices: `srgb` (default), `adobergb`. Determines the RGB→XYZ conversion matrices used by colormath. |
-| `--patch_first_xy` | `"X,Y"` coordinates (floats or ints) of the **centre** of the first patch (top-left patch). Origin is top-left of the image. |
-| `--patch_last_xy` | `"X,Y"` coordinates (floats or ints) of the **centre** of the last patch (bottom-right patch). |
-| `--patch_width_height_ratio` | Width ÷ height (W/H) ratio of a single patch. Examples: `1.0` → square patches; `1.4` → width is 1.4× height. |
-| `--num_cols` | Number of columns in the grid. |
-| `--num_rows` | Number of rows in the grid. |
-| `--row_labels`, `--col_labels` | Define the label sequences. Must match `num_rows` / `num_cols` exactly. Supported formats:<br> **Numeric:** `1-27`, `03-15`, `0001-0120` (zero-padding preserved).<br> **Alphabetic:** `A-Z`, `A-AA`, `BQ-CF`, up to `ZZ`.<br> Notes: Alphabetic and numeric are mutually exclusive between row and column—if rows use alphabetic labels, columns must be numeric, and vice-versa. |
-| `--patch_label_order` | Determines how the patch label is formed: `col_then_row` → (col)(row), `row_then_col` → (row)(col). |
-| `--output_color_space` | Comma-separated list. Allowed tokens: `RGB`, `XYZ`, `LAB`. Specifies which colour spaces to output in the generated file, and in what order. TI1 includes only RGB and/or XYZ; TI2/CSV includes any defined token.<br> Examples: `RGB,XYZ` → TI1 includes RGB,XYZ; TI2/CSV includes RGB,XYZ. `XYZ,LAB,RGB` → TI1 includes XYZ,RGB; TI2/CSV includes XYZ,LAB,RGB.<br> Output columns follow the specified sequence. |
-| `--sample_fraction` | Fraction of patch to sample; default **0.20** (20%). Sampling square is centered on patch centre and clamped to at least **3×3 pixels** and at most **60%** of patch size. |
-| `--sample_mode` | `"mean"` (default) or `"median"` for robust sampling. |
-| `--output` | **[Optional]** Output filename base (defaults to `<imagebasename>.ti1/.ti2/.csv`). |
 
 # Notes on Accuracy
 - Uses 16-bit RGB internally.
@@ -332,7 +338,7 @@ python3 read_image_patch_colors.py \
   --num_cols 36 \
   --num_rows 24 \
   --row_labels A-X \
-  --col_labels 01-36 \
+  --col_labels 1-36 \
   --patch_label_order row_then_col \
   --output_color_space RGB,XYZ
 ```

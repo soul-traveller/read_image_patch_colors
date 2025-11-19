@@ -1,0 +1,15 @@
+#First run script on SpiderPrint image (default row_major, no rotation, no mirroring)
+python3 read_image_patch_colors.py \
+  --image "High Quality Target (225-patches).tif" \
+  --patch_first_xy 61,50 \
+  --patch_last_xy 848,612 \
+  --patch_width_height_ratio 1.37837838 \
+  --num_cols 15 \
+  --num_rows 15 \
+  --row_labels 1-15 \
+  --col_labels A-O \
+  --patch_label_order col_then_row \
+  --output_color_space RGB,XYZ
+
+#Then use the .ti1 file with printtarg:
+printtarg -v -s -M10 -pA4 -b -r -ii1 -T -a1.36 "High Quality Target (225-patches)-i1-row_major-0deg"
