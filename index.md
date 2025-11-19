@@ -57,26 +57,88 @@ Target images used for creating .ti1, .ti2 and .csv files are under folder [Exam
 One example of generating an ArgyllCMS printtarg target for SpyderPrint High Quality Target (225-patches) is also included.
 
 # Command-line Arguments
-| Argument                     | Description                                                                                                                                                                                                                                                                                                                             |
-| ------------ | ----------- |
-| `--image` / `-i`             | **(Required)** Path to the input image containing the colour-patch grid. Image must be a *display-referred*, D65-based RGB image encoded using a **2.2 gamma** transfer curve (typical scanned/photographed targets).                                                                                                                   |
-| `--image_color_space`        | Input image device colour space. Determines RGB→XYZ conversion matrix. Options:<br>• `srgb` *(default)*<br>• `adobergb`                                                                                                                                                                                                                 |
-| `--patch_first_xy`           | **(Required)** `"X,Y"` coordinates of the **centre of the first patch** (top-left). Accepts integers or floats.                                                                                                                                                                                                                         |
-| `--patch_last_xy`            | **(Required)** `"X,Y"` coordinates of the **centre of the last patch** (bottom-right). Accepts integers or floats.                                                                                                                                                                                                                      |
-| `--patch_width_height_ratio` | **(Required)** Width ÷ Height ratio (W/H) of a single patch.<br>Examples: `1.0` (square), `1.378`, etc.                                                                                                                                                                                                                                 |
-| `--num_cols`                 | **(Required)** Number of columns in the grid.                                                                                                                                                                                                                                                                                           |
-| `--num_rows`                 | **(Required)** Number of rows in the grid.                                                                                                                                                                                                                                                                                              |
-| `--sample_fraction`          | Fraction of patch area to sample (float). Default: **0.20** (20%).<br>Constraints: `0 < f ≤ 0.6`.<br>The sampling area is a centered square clamped to at least **3×3 px** and at most **60%** of patch size.                                                                                                                           |
-| `--row_labels`               | **(Required)** Label sequence for rows. Must match `num_rows` exactly.<br>Allowed patterns:<br>• **Numeric ranges:** `1-15`, `03-12`, `0001-0120` (zero-padding preserved)<br>• **Alphabetic ranges:** `A-Z`, `A-AC`, `BQ-CF`, up to `ZZ`<br>**Note:** Rows and columns must use *different* types (numeric ↔ alphabetic).              |
-| `--col_labels`               | **(Required)** Label sequence for columns (same rules as `row_labels`).                                                                                                                                                                                                                                                                 |
-| `--patch_label_order`        | **(Required)** Determines patch label composition:<br>• `col_then_row` → e.g. `A12`<br>• `row_then_col` → e.g. `12A`                                                                                                                                                                                                                    |
-| `--output_color_space`       | **(Required)** Comma-separated list specifying which colour spaces to output (in order). Allowed tokens:<br>• `RGB`<br>• `XYZ`<br>• `LAB`<br>Rules:<br>• TI1 can include only RGB and/or XYZ<br>• TI2/CSV include all listed tokens<br>Examples:<br>`RGB,XYZ` → TI1: RGB,XYZ; TI2: RGB,XYZ.<br>`XYZ,LAB,RGB` → TI1: XYZ,RGB; TI2: XYZ,LAB,RGB. |
-| `--sample_mode`              | Patch sampling aggregation method:<br>• `mean` – arithmetic mean (not robust)<br>• `median` – robust, but biases asymmetric patches<br>• `mad` *(default)* – robust mean via MAD-based sigma clipping                                                                                                                                   |
-| `--output_order`             | Determines initial traversal order before rotation/mirroring, if applied:<br>• `row_major` *(default)*: iterate row by row (top→bottom, left→right)<br>• `column_major`: iterate column by column (left→right, top→bottom)<br>Applied **first**, before `rotate_grid` and `mirror_output`.                                              |
-| `--mirror_output`            | Reverse traversal **after** output_order and rotate_grid:<br>• If `row_major`: reverse column labels for each row (vertical flip).<br>• If `column_major`: reverse row labels for each column (horizontal flip).                                                                                                                         |
-| `--rotate_grid`              | Rotate the entire patch grid **clockwise** before mirroring (if mirror_output applied). Allowed values:<br>• `0` *(default)*<br>• `90` – rotate 90° CW<br>• `180` – rotate 180°<br>• `270` – rotate 270° CW<br>Applied **after output_order**, **before mirror_output**.                                                                |
-| `--output`                   | Base filename for generated `.ti1`, `.ti2`, and `.csv` output files.<br>If omitted, filenames are based on the input image name.                                                                                                                                                                                                        |
-| `--debug`                    | Enable diagnostic printing for the first few patches. Shows sampling geometry, pixel statistics, and intermediate RGB calculations.                                                                                                                                                                                                     |
+<table>
+  <thead>
+    <tr>
+      <th>Argument</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>--image</code> / <code>-i</code></td>
+      <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a <i>display-referred</i>, D65-based RGB image encoded using a <b>2.2 gamma</b> transfer curve (typical scanned/photographed targets).</td>
+    </tr>
+    <tr>
+      <td><code>--image_color_space</code></td>
+      <td>Input image device colour space. Determines RGB→XYZ conversion matrix. Options:<br>• <code>srgb</code> <i>(default)</i><br>• <code>adobergb</code></td>
+    </tr>
+    <tr>
+      <td><code>--patch_first_xy</code></td>
+      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the first patch</b> (top-left). Accepts integers or floats.</td>
+    </tr>
+    <tr>
+      <td><code>--patch_last_xy</code></td>
+      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the last patch</b> (bottom-right). Accepts integers or floats.</td>
+    </tr>
+    <tr>
+      <td><code>--patch_width_height_ratio</code></td>
+      <td><b>(Required)</b> Width ÷ Height ratio (W/H) of a single patch.<br>Examples: <code>1.0</code> (square), <code>1.378</code>, etc.</td>
+    </tr>
+    <tr>
+      <td><code>--num_cols</code></td>
+      <td><b>(Required)</b> Number of columns in the grid.</td>
+    </tr>
+    <tr>
+      <td><code>--num_rows</code></td>
+      <td><b>(Required)</b> Number of rows in the grid.</td>
+    </tr>
+    <tr>
+      <td><code>--sample_fraction</code></td>
+      <td>Fraction of patch area to sample (float). Default: <b>0.20</b> (20%).<br>Constraints: <code>0 &lt; f ≤ 0.6</code>.<br>The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.</td>
+    </tr>
+    <tr>
+      <td><code>--row_labels</code></td>
+      <td><b>(Required)</b> Label sequence for rows. Must match <code>num_rows</code> exactly.<br>Allowed patterns:<br>• <b>Numeric ranges:</b> <code>1-15</code>, <code>03-12</code>, <code>0001-0120</code> (zero-padding preserved)<br>• <b>Alphabetic ranges:</b> <code>A-Z</code>, <code>A-AC</code>, <code>BQ-CF</code>, up to <code>ZZ</code><br><b>Note:</b> Rows and columns must use <i>different</i> types (numeric ↔ alphabetic).</td>
+    </tr>
+    <tr>
+      <td><code>--col_labels</code></td>
+      <td><b>(Required)</b> Label sequence for columns (same rules as <code>row_labels</code>).</td>
+    </tr>
+    <tr>
+      <td><code>--patch_label_order</code></td>
+      <td><b>(Required)</b> Determines patch label composition:<br>• <code>col_then_row</code> → e.g. <code>A12</code><br>• <code>row_then_col</code> → e.g. <code>12A</code></td>
+    </tr>
+    <tr>
+      <td><code>--output_color_space</code></td>
+      <td><b>(Required)</b> Comma-separated list specifying which colour spaces to output (in order). Allowed tokens:<br>• <code>RGB</code><br>• <code>XYZ</code><br>• <code>LAB</code><br>Rules:<br>• TI1 can include only RGB and/or XYZ<br>• TI2/CSV include all listed tokens<br>Examples:<br><code>RGB,XYZ</code> → TI1: RGB,XYZ; TI2: RGB,XYZ.<br><code>XYZ,LAB,RGB</code> → TI1: XYZ,RGB; TI2: XYZ,LAB,RGB.</td>
+    </tr>
+    <tr>
+      <td><code>--sample_mode</code></td>
+      <td>Patch sampling aggregation method:<br>• <code>mean</code> – arithmetic mean (not robust)<br>• <code>median</code> – robust, but biases asymmetric patches<br>• <code>mad</code> <i>(default)</i> – robust mean via MAD-based sigma clipping</td>
+    </tr>
+    <tr>
+      <td><code>--output_order</code></td>
+      <td>Determines initial traversal order before rotation/mirroring, if applied:<br>• <code>row_major</code> <i>(default)</i>: iterate row by row (top→bottom, left→right)<br>• <code>column_major</code>: iterate column by column (left→right, top→bottom)<br>Applied <b>first</b>, before <code>rotate_grid</code> and <code>mirror_output</code>.</td>
+    </tr>
+    <tr>
+      <td><code>--mirror_output</code></td>
+      <td>Reverse traversal <b>after</b> <code>output_order</code> and <code>rotate_grid</code>:<br>• If <code>row_major</code>: reverse column labels for each row (vertical flip).<br>• If <code>column_major</code>: reverse row labels for each column (horizontal flip).</td>
+    </tr>
+    <tr>
+      <td><code>--rotate_grid</code></td>
+      <td>Rotate the entire patch grid <b>clockwise</b> before mirroring (if <code>mirror_output</code> applied). Allowed values:<br>• <code>0</code> <i>(default)</i><br>• <code>90</code> – rotate 90° CW<br>• <code>180</code> – rotate 180°<br>• <code>270</code> – rotate 270° CW<br>Applied <b>after output_order</b>, <b>before mirror_output</b>.</td>
+    </tr>
+    <tr>
+      <td><code>--output</code></td>
+      <td>Base filename for generated <code>.ti1</code>, <code>.ti2</code>, and <code>.csv</code> output files.<br>If omitted, filenames are based on the input image name.</td>
+    </tr>
+    <tr>
+      <td><code>--debug</code></td>
+      <td>Enable diagnostic printing for the first few patches. Shows sampling geometry, pixel statistics, and intermediate RGB calculations.</td>
+    </tr>
+  </tbody>
+</table>
 
 # Image Input
 Accepted image types: any PIL-compatible raster file
