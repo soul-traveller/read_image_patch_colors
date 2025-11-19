@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 read_image_patch_colors.py
-Version: 1.4
+Version: 1.4.2
 
 ================================================================================
 READ_IMAGE_PATCH_COLORS.PY — COMPLETE DOCUMENTATION
@@ -985,6 +985,48 @@ class TI1Writer(PatchFileWriter):
                 fh.write(" ".join(row_vals) + "\n")
             fh.write('END_DATA\n')
 
+            fh.write("CTI1\n\n")
+            fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
+            fh.write('ORIGINATOR "Argyll targen"\n')
+            fh.write('DENSITY_EXTREME_VALUES "8"\n')
+            fh.write(f'CREATED "{created_ts}"\n\n')
+            fh.write('NUMBER_OF_FIELDS "7"\n')
+            fh.write('BEGIN_DATA_FORMAT\n')
+            fh.write("INDEX RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z\n")
+            fh.write("END_DATA_FORMAT\n\n")
+            fh.write('NUMBER_OF_SETS "8"\n')
+            fh.write('BEGIN_DATA\n')
+            fh.write("0 0.00000 49.99527 43.75000 9.333898 12.12691 15.35996\n")
+            fh.write("1 0.00000 50.00123 50.00000 9.282530 11.93912 15.71923\n")
+            fh.write("2 0.00000 40.08532 59.90998 9.652263 11.23035 20.85225\n")
+            fh.write("3 0.00000 0.00000 78.36374 6.278528 5.962001 12.87821\n")
+            fh.write("4 30.55980 50.01120 0.00000 14.44452 18.46006 7.172505\n")
+            fh.write("5 0.00000 32.57137 0.00000 5.299583 7.184013 4.303697\n")
+            fh.write("6 100.0000 0.00000 0.00000 35.19251 20.43654 4.643321\n")
+            fh.write("7 0.00000 0.00000 21.87299 3.801583 3.909116 4.506199\n")
+            fh.write('END_DATA\n')
+
+            fh.write("CTI1\n\n")
+            fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
+            fh.write('ORIGINATOR "Argyll targen"\n')
+            fh.write('DEVICE_COMBINATION_VALUES "9"\n')
+            fh.write(f'CREATED "{created_ts}"\n\n')
+            fh.write('NUMBER_OF_FIELDS "7"\n')
+            fh.write('BEGIN_DATA_FORMAT\n')
+            fh.write("INDEX RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z\n")
+            fh.write("END_DATA_FORMAT\n\n")
+            fh.write('NUMBER_OF_SETS "9"\n')
+            fh.write('BEGIN_DATA\n')
+            fh.write("0 100.0000 100.0000 100.0000 92.38129 96.32111 81.69708\n")
+            fh.write("1 0.00000 100.0000 100.0000 29.15368 33.35974 49.04946\n")
+            fh.write("2 100.0000 0.00000 100.0000 36.32309 22.82926 20.84792\n")
+            fh.write("3 0.00000 0.00000 100.0000 6.999917 6.572461 14.97645\n")
+            fh.write("4 100.0000 100.0000 0.00000 75.23812 85.69790 15.35314\n")
+            fh.write("5 0.00000 100.0000 0.00000 16.87349 25.12038 10.16533\n")
+            fh.write("6 100.0000 0.00000 0.00000 35.19251 20.43654 4.643321\n")
+            fh.write("7 0.00000 0.00000 0.00000 4.312931 5.032890 3.693281\n")
+            fh.write("8 50.00000 50.00000 50.00000 24.83442 26.40655 22.95545\n")
+            fh.write('END_DATA\n')
 
 class TI2Writer(PatchFileWriter):
     """Write Argyll .ti2 file.
