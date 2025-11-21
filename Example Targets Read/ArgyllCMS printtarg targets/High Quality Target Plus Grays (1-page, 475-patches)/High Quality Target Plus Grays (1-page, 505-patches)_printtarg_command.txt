@@ -1,0 +1,29 @@
+#First run script on SpyderPrint images (default row_major, no rotation, no mirroring)
+python3 read_image_patch_colors.py \
+  --image "High Quality Target Plus Grays 1 of 2 (225-patches).tif" \
+  --patch_first_xy 61,50 \
+  --patch_last_xy 848,612 \
+  --patch_width_height_ratio 1.37837838 \
+  --num_cols 15 \
+  --num_rows 15 \
+  --row_labels 1-15 \
+  --col_labels A-O \
+  --patch_label_order col_then_row \
+  --output_color_space RGB,XYZ
+
+python3 read_image_patch_colors.py \
+  --image "High Quality Target Plus Grays 2 of 2 (238-patches).tif" \
+  --patch_first_xy 56,51 \
+  --patch_last_xy 847,592 \
+  --patch_width_height_ratio 1.09803921568 \
+  --num_cols 17 \
+  --num_rows 14 \
+  --row_labels 1-14 \
+  --col_labels A-Q \
+  --patch_label_order col_then_row \
+  --output_color_space RGB,XYZ
+
+#Then use the .ti1 file with printtarg. Added black and white patches to fill mising patches on A4 page:
+printtarg -v -s -M10 -pA4 -r -iSS -T300 -a1.35 "High Quality Target Plus Grays (1-page, 505-patches)"
+
+#Remove -r is randomized patch position is desired
