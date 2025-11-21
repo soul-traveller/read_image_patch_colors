@@ -1,0 +1,6 @@
+Combined TI1 files for Expert Target Plus Grays+LaserSoft Advanced Target
+
+#Then use the .ti1 file with printtarg. Added black and white patches to fill mising patches on A4 page:
+printtarg -v -s -M10 -pA4 -r -iSS -T300 -a0.71 "A4-Expert Target Plus Grays+LaserSoft Advanced (2 pages - 1900 patches)-SS"
+
+#Remove -r is randomized patch position is desired

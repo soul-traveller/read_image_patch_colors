@@ -1,0 +1,18 @@
+#First run script on LaserSoft image (default row_major, no rotation, no mirroring)
+python3 read_image_patch_colors.py \
+  --image "LaserSoft_Advanced_Target-display.tif" \
+  --patch_first_xy 168,168 \
+  --patch_last_xy 1335,935 \
+  --patch_width_height_ratio 1.0 \
+  --num_cols 36 \
+  --num_rows 24 \
+  --row_labels A-X \
+  --col_labels 1-36 \
+  --patch_label_order row_then_col \
+  --output_color_space RGB,XYZ
+
+
+#Then use the .ti1 file with printtarg. Added black and white patches to fill mising patches on pages:
+printtarg -v -s -M10 -pLetter -r -ii1 -T300 -a0.98 "Letter-LaserSoft Advanced Target (2 pages - 924 patches)-i1"
+
+#Remove -r is randomized patch position is desired
