@@ -1,6 +1,0 @@
-Combined TI1 files for Expert Target Plus Grays+LaserSoft Advanced Target
-
-#Then use the .ti1 file with printtarg:
-printtarg -v -s -M10 -pA4 -r -iSS -T300 -a0.71 "Expert Target Plus Grays+LaserSoft Advanced (1 page - 1890 patches)"
-
-#Remove -r is randomized patch position is desired
