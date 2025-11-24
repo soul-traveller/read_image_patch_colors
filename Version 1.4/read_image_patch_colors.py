@@ -554,11 +554,26 @@ def f_for_lab_arr(t_arr: np.ndarray) -> np.ndarray:
     return out
 
 
+# MATRIX_FWD = GenericRGB 3x3 matrix (RGB → XYZ)
+# linear RGB (0..1) input, XYZ output scaled Y=100
+def linear_rgb_to_xyz100(linear_rgb: np.ndarray) -> np.ndarray:
+    """
+    Convert linear RGB (0..1) to CIEXYZ (D50, Y=100-scale).
+    """
+    linear_rgb = np.asarray(linear_rgb, dtype=np.float64)
+    # Apply forward matrix
+    xyz = np.dot(linear_rgb.reshape(-1,3), MATRIX_FWD.T)
+    # Scale Y to 100
+    Y_scale = 100.0 / xyz[:,1].max()  # optional normalization
+    xyz100 = xyz * 100.0
+    return xyz100.reshape(linear_rgb.shape)
+
+
 # Convert CIEXYZ to CIE Lab (D50 reference).
 # Input: xyz (np.ndarray, shape (...,3)), values typically 0..100 for X,Y,Z (Y scaled to 100).
 # Output: Lab array same shape: L in ~[0..100], a,b roughly [-128..128].
 # Assumes reference white D50 (D50_X, D50_Y, D50_Z).
-def xyz_to_lab_d50(xyz: np.ndarray) -> np.ndarray:
+def xyz100_to_lab100_d50(xyz: np.ndarray) -> np.ndarray:
     xyz = np.asarray(xyz, dtype=np.float64)
 
     # Normalize by the D50 whitepoint (ratios)
@@ -616,21 +631,27 @@ def lab_to_xyz_d50(lab: np.ndarray) -> np.ndarray:
 
 # ---------- Image I/O and averaging ----------
 # Load an image and return a 16-bit RGB numpy array (HxWx3, uint16).
-# Input: img_path (str)
+# Input: img_path (str), assumes images is RGB and allows no other mode.
+#        Reads RGB 3x8-bit pixels, or 3x16 pixels, true color.
 # Output: tuple (arr16: np.ndarray HxWx3 uint16, bit_depth: int 8|16)
 def load_image_as_16bit_rgb(img_path: str) -> Tuple[np.ndarray, int]:
     try:
         im = Image.open(img_path)
     except Exception as e:
-        print('Error: Failed to open image:', e)
+        print("Error: Failed to open image:", e)
         sys.exit(1)
 
-    # Convert to RGB (drops alpha, converts grayscale to RGB etc.)
-    im = im.convert('RGB')
+    # Only allow RGB mode
+    if im.mode != "RGB":
+        print(f"Error: Unsupported image mode '{im.mode}'. Only RGB images are allowed.")
+        sys.exit(1)
+
+    # Convert to RGB (ensures no alpha, no grayscale)
+    im = im.convert("RGB")
     arr = np.array(im)
 
     if arr.dtype == np.uint8:
-        # Expand 8-bit to full 16-bit range exactly (value * 257)
+        # Expand 8-bit to full 16-bit range (value * 257)
         arr16 = (arr.astype(np.uint32) * 257).astype(np.uint16)
         return arr16, 8
 
@@ -639,11 +660,10 @@ def load_image_as_16bit_rgb(img_path: str) -> Tuple[np.ndarray, int]:
         return arr.astype(np.uint16), 16
 
     else:
-        # Floating or other range: clamp to 0..1 then scale
+        # Floating point or other → normalize 0..1 then scale
         arrf = np.clip(arr.astype(np.float64), 0.0, 1.0)
         arr16 = (arrf * 65535.0).round().astype(np.uint16)
         return arr16, 16
-
 
 # Compute the RGB value of a patch using different aggregation modes.
 # Input:
