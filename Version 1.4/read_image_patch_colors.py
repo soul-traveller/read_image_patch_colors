@@ -236,19 +236,18 @@ COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
 
 - CIEXYZ in output:
   * CIEXYZ (CIE 1931 2° standard observer)
-  * **D50** white reference (Profile Connection Space in ICC)
+  * **D65** white reference (Profile Connection Space in ICC)
   * **Scaled so that white has Y = 100.000000**
   * Numeric precision: six decimal places.
 
 - Lab in output:
-  * CIE L*a*b* (1976), computed using **D50** reference white (Xn, Yn, Zn)
+  * CIE L*a*b* (1976), computed using **D65** reference white (Xn, Yn, Zn)
   * L in range ~0..100, a and b around typical -128..128 ranges.
   * Numeric precision: six decimal places.
 
-- All colorimetric output is **D50** and **linear** (no gamma applied in XYZ or Lab).
+- All colorimetric output is **D65** and **linear** (no gamma applied in XYZ or Lab).
   The conversion pipeline in this script applies TRC/matrix conversions according to
-  the selected `--image_color_space` using python-colormath. Chromatic adaptation to
-  D50 is performed by colormath during conversion when required.
+  the selected `--image_color_space` using python-colormath.
 
 ================================================================================
 NOTES ON ACCURACY
@@ -277,7 +276,7 @@ For each patch:
 4. The sampled RGB values are averaged in 16-bit integer space (8-bit inputs are scaled to 16-bit via *257).
 5. Colour conversions are applied using python-colormath:
       averaged 16-bit RGB (scaled to 0..1 via /65535)
-          -> colormath: RGB -> CIEXYZ (D50), then XYZ -> Lab (D50)
+          -> colormath: RGB -> CIEXYZ (D65), then XYZ -> Lab (D65)
 
 ================================================================================
 Output File Format (ArgyllCMS TI2)
@@ -439,10 +438,6 @@ DEBUG = False
 DEBUG_PRINT_LIMIT = 10
 DEBUG_AVG_COUNTER = 0
 DEBUG_SAMPLE_COUNTER = 0
-# Reference white D50 (used in Lab conversion)
-D50_X = 96.422
-D50_Y = 100.000
-D50_Z = 82.521
 DEFAULT_SAMPLE_FRACTION = 0.20
 EPS = (6.0 / 29.0) ** 3   # Threshold for linearization in Lab
 K = 24389.0 / 27.0        # Linear coefficient in Lab conversion
@@ -553,83 +548,11 @@ def f_for_lab_arr(t_arr: np.ndarray) -> np.ndarray:
     out[~mask] = (K * t_arr[~mask] + 16.0) / 116.0
     return out
 
-
-# MATRIX_FWD = GenericRGB 3x3 matrix (RGB → XYZ)
-# linear RGB (0..1) input, XYZ output scaled Y=100
-def linear_rgb_to_xyz100(linear_rgb: np.ndarray) -> np.ndarray:
-    """
-    Convert linear RGB (0..1) to CIEXYZ (D50, Y=100-scale).
-    """
-    linear_rgb = np.asarray(linear_rgb, dtype=np.float64)
-    # Apply forward matrix
-    xyz = np.dot(linear_rgb.reshape(-1,3), MATRIX_FWD.T)
-    # Scale Y to 100
-    Y_scale = 100.0 / xyz[:,1].max()  # optional normalization
-    xyz100 = xyz * 100.0
-    return xyz100.reshape(linear_rgb.shape)
-
-
-# Convert CIEXYZ to CIE Lab (D50 reference).
-# Input: xyz (np.ndarray, shape (...,3)), values typically 0..100 for X,Y,Z (Y scaled to 100).
-# Output: Lab array same shape: L in ~[0..100], a,b roughly [-128..128].
-# Assumes reference white D50 (D50_X, D50_Y, D50_Z).
-def xyz100_to_lab100_d50(xyz: np.ndarray) -> np.ndarray:
-    xyz = np.asarray(xyz, dtype=np.float64)
-
-    # Normalize by the D50 whitepoint (ratios)
-    fx = f_for_lab_arr(xyz[..., 0] / D50_X)
-    fy = f_for_lab_arr(xyz[..., 1] / D50_Y)
-    fz = f_for_lab_arr(xyz[..., 2] / D50_Z)
-
-    # Compute L*, a*, b*
-    L = (116.0 * fy) - 16.0
-    a = 500.0 * (fx - fy)
-    b = 200.0 * (fy - fz)
-
-    return np.stack([L, a, b], axis=-1)
-
-
-# Inverse function used for Lab -> XYZ conversion.
-# Input: f_arr (np.ndarray) f-values
-# Output: t-values (np.ndarray) suitable for XYZ reconstruction.
-def finv_arr(f_arr: np.ndarray) -> np.ndarray:
-    f_arr = np.asarray(f_arr, dtype=np.float64)
-    mask = f_arr > (6.0 / 29.0)
-    out = np.empty_like(f_arr, dtype=np.float64)
-
-    # Cubic inverse for larger f
-    out[mask] = f_arr[mask] ** 3
-    # Linear inverse for small f
-    out[~mask] = (116.0 * f_arr[~mask] - 16.0) / K
-    return out
-
-
-# Convert Lab (D50) to CIEXYZ (scaled so Y = 100).
-# Input: lab (np.ndarray, shape (...,3)) with L in 0..100
-# Output: xyz (np.ndarray, same shape) with X,Y,Z scaled so Y=100.
-def lab_to_xyz_d50(lab: np.ndarray) -> np.ndarray:
-    lab = np.asarray(lab, dtype=np.float64)
-    L = lab[..., 0]
-    a = lab[..., 1]
-    b = lab[..., 2]
-
-    fy = (L + 16.0) / 116.0
-    fx = fy + (a / 500.0)
-    fz = fy - (b / 200.0)
-
-    xr = finv_arr(np.asarray(fx))
-    yr = finv_arr(np.asarray(fy))
-    zr = finv_arr(np.asarray(fz))
-
-    x = xr * (D50_X / 100.0)
-    y = yr * (D50_Y / 100.0)
-    z = zr * (D50_Z / 100.0)
-
-    xyz100 = np.stack([x * 100.0, y * 100.0, z * 100.0], axis=-1)
-    return xyz100
-
-
-# ---------- Image I/O and averaging ----------
+    # Convert RGB -> XYZ, request D50 illuminant if supported
+    try:
+        xyz_obj = convert_color(rgb_obj, XYZColor, target_illuminant='d50')
+    except Exception:
+        xyz_obj = convert_color(rgb_obj, XYZColor)
 # Load an image and return a 16-bit RGB numpy array (HxWx3, uint16).
 # Input: img_path (str), assumes images is RGB and allows no other mode.
 #        Reads RGB 3x8-bit pixels, or 3x16 pixels, true color.
@@ -755,39 +678,45 @@ def get_rgb_class_and_kwargs(space_name: str):
     raise ValueError(f"Unsupported image_color_space: {space_name}")
 
 
-# Convert averaged 16-bit RGB to CIEXYZ (D50, scaled so Y=100) and Lab (D50).
+# Convert averaged 16-bit RGB to CIEXYZ (D65, scaled so Y=100) and Lab (D65).
 # Input: avg_rgb16 sequence of 3 values (0..65535), image_color_space (str)
 # Output: (xyz100: ndarray(3,), lab_float: ndarray(3,))
 def rgb16_to_xyz_lab(avg_rgb16: Sequence[float], image_color_space: str) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
+
     # Scale to 0..1 for colormath
     rgb01 = np.asarray(avg_rgb16, dtype=np.float64) / 65535.0
 
     ColorClass, kwargs = get_rgb_class_and_kwargs(image_color_space)
     rgb_obj = ColorClass(rgb01[0], rgb01[1], rgb01[2], **kwargs)
 
-    # Convert RGB -> XYZ, request D50 illuminant if supported
-    try:
+    # ---- XYZ conversion according to requested illuminant ----
+    if output_illuminant.upper() == 'D50':
+        # Force Bradford adaptation to D50 PCS
         xyz_obj = convert_color(rgb_obj, XYZColor, target_illuminant='d50')
-    except Exception:
+    else:
+        # Native illuminant of sRGB is D65 → no adaptation
         xyz_obj = convert_color(rgb_obj, XYZColor)
 
-    # Extract XYZ (colormath returns 0..1-ish for PCS; we scale to Y=100 below)
-    X = float(getattr(xyz_obj, 'xyz_x', xyz_obj.xyz_x))
-    Y = float(getattr(xyz_obj, 'xyz_y', xyz_obj.xyz_y))
-    Z = float(getattr(xyz_obj, 'xyz_z', xyz_obj.xyz_z))
+    # Extract XYZ
+    X = float(xyz_obj.xyz_x)
+    Y = float(xyz_obj.xyz_y)
+    Z = float(xyz_obj.xyz_z)
 
     # Scale to XYZ where Yn = 100
     xyz100 = np.array([X * 100.0, Y * 100.0, Z * 100.0], dtype=np.float64)
 
-    # Convert XYZ -> Lab (D50)
-    try:
+    # ---- Lab conversion according to requested illuminant ----
+    if output_illuminant.upper() == 'D50':
         lab_obj = convert_color(xyz_obj, LabColor, target_illuminant='d50')
-    except Exception:
-        lab_obj = convert_color(xyz_obj, LabColor)
+    else:
+        # Lab relative to D65 (supported in colormath)
+        lab_obj = convert_color(xyz_obj, LabColor, target_illuminant='d65')
 
-    L = float(getattr(lab_obj, 'lab_l', lab_obj.lab_l))
-    a = float(getattr(lab_obj, 'lab_a', lab_obj.lab_a))
-    b = float(getattr(lab_obj, 'lab_b', lab_obj.lab_b))
+    # Extract LAB
+    L = float(lab_obj.lab_l)
+    a = float(lab_obj.lab_a)
+    b = float(lab_obj.lab_b)
 
     lab_float = np.array([L, a, b], dtype=np.float64)
 
@@ -983,7 +912,8 @@ def extract_patch_data(
     sample_mode: str,
     output_order: str,
     mirror_output: bool,
-    rotate_grid: int
+    rotate_grid: int,
+    output_illuminant: str
 ) -> Tuple[List[PatchInfo], np.ndarray, np.ndarray]:
 
     patches: List[PatchInfo] = []
@@ -1018,7 +948,7 @@ def extract_patch_data(
 
                 avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
                 rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space)
+                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space, output_illuminant)
 
                 Y_lum = float(xyz100[1])
                 if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
@@ -1092,7 +1022,7 @@ def extract_patch_data(
 
                 avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
                 rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space)
+                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space, output_illuminant)
 
                 Y_lum = float(xyz100[1])
                 if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
@@ -1417,7 +1347,8 @@ def process_image_to_files(args):
         args.sample_mode,
         args.output_order,
         args.mirror_output,
-        args.rotate_grid
+        args.rotate_grid,
+        args.output_illuminant
     )
 
     base_out = os.path.splitext(os.path.basename(args.image))[0]
@@ -1471,6 +1402,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument('--patch_label_order', required=True, choices=["col_then_row", "row_then_col"])
     p.add_argument('--output_color_space', required=True,
                    help='Comma-separated sequence of color spaces to include: RGB, XYZ, LAB')
+    p.add_argument(
+        '--output_illuminant',
+        default='D65',
+        choices=['D50', 'D65'],
+        help='Illuminant used for XYZ/Lab in output files (default: D65).'
+    )
     p.add_argument(
         '--sample_mode',
         default='mad',
