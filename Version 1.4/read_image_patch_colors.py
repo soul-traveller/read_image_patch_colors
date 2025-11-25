@@ -681,7 +681,10 @@ def get_rgb_class_and_kwargs(space_name: str):
 # Convert averaged 16-bit RGB to CIEXYZ (D65, scaled so Y=100) and Lab (D65).
 # Input: avg_rgb16 sequence of 3 values (0..65535), image_color_space (str)
 # Output: (xyz100: ndarray(3,), lab_float: ndarray(3,))
-def rgb16_to_xyz_lab(avg_rgb16: Sequence[float], image_color_space: str) -> Tuple[np.ndarray, np.ndarray]:
+def rgb16_to_xyz_lab(
+    avg_rgb16: Sequence[float],
+    image_color_space: str,
+    output_illuminant: str
     ) -> Tuple[np.ndarray, np.ndarray]:
 
     # Scale to 0..1 for colormath
