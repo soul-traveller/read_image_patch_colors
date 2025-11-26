@@ -1,8 +1,8 @@
 #First run script on SpyderPrint image (default row_major, no rotation, no mirroring)
 python3 read_image_patch_colors.py \
   --image "Expert Target (large)(729-patches).tif" \
-  --patch_first_xy 56,38 \
-  --patch_last_xy 1234,921 \
+  --patch_first_xy 72,51 \
+  --patch_last_xy 1250,934 \
   --patch_width_height_ratio 1.4 \
   --num_cols 27 \
   --num_rows 27 \
