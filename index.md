@@ -70,9 +70,9 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
       <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a <i>display-referred</i>, D65-based RGB image encoded using a <b>2.2 gamma</b> transfer curve (typical scanned/photographed targets).</td>
     </tr>
     <tr>
-      <td><code>--image_color_space</code></td>
-      <td>Input image device colour space. Determines RGB→XYZ conversion matrix. Options:<br>• <code>srgb</code> <i>(default)</i><br>• <code>adobergb</code></td>
-    </tr>
+      <td><code>--image_icc_profile</code></td>
+      <td>Input image colour icc/icm profile file path.<br>
+      		• <code>sRGB.icm</code> <i>(default)</i></td>
     <tr>
       <td><code>--patch_first_xy</code></td>
       <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the first patch</b> (top-left). Accepts integers or floats.</td>
@@ -197,7 +197,7 @@ Label counts must match grid dimensions exactly.
 Sampled RGB → RGB percentage (0–100):
 `RGB_percent = (R_16bit / 65535) * 100`
 
-Conversions use python-colormath according to selected color space (“srgb” / “adobergb”).
+Conversions use ArgyllCMS xicclu with selected color icc profile (default “sRGB.icm”).
 
 The patch with the highest XYZ_Y is stored as `APPROX_WHITE_POINT`.
 
@@ -225,10 +225,10 @@ Contains: header, APPROX\_WHITE\_POINT, strip/patch index patterns, STEPS\_IN\_P
 Space-separated table with SAMPLE_ID, SAMPLE_LOC, and selected color values.
 
 # Patch Value Ranges
-RGB: 0–100
-XYZ: typically 0–100
-Lab_L: 0–100
-Lab_a/b: approx. –128 to +128
+RGB: 0–100<br>
+XYZ: typically 0–100<br>
+Lab_L: 0–100<br>
+Lab_a/b: approx. –128 to +128<br>
 
 All values have six decimal places.
 
@@ -244,7 +244,7 @@ Order controls column order in TI1/TI2/CSV.
 - Python 3.8+
 - numpy
 - Pillow
-- colormath
+- ArgyllCMS xicclu
 
 # Notes on Accuracy
 - Uses 16-bit RGB internally.
@@ -257,7 +257,7 @@ Order controls column order in TI1/TI2/CSV.
 2. Define sampling region size (min 3px, max 60% patch).
 3. Extract pixels.
 4. Average RGB in 16-bit domain.
-5. Convert using colormath (RGB→XYZ D50 → Lab D50).
+5. Convert using ArgyllCMS xicclu (RGB→XYZ D50 → Lab D50).
 
 # Output File Format (TI2)
 ```
@@ -396,8 +396,8 @@ This image uses a special character on last column label, which must be manually
 ```
 python3 read_image_patch_colors.py \
   --image "Expert Target (large)(729-patches).tif" \
-  --patch_first_xy 56,38 \
-  --patch_last_xy 1234,921 \
+  --patch_first_xy 72,51 \
+  --patch_last_xy 1250,934 \
   --patch_width_height_ratio 1.4 \
   --num_cols 27 \
   --num_rows 27 \

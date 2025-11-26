@@ -85,8 +85,8 @@ Each sampled RGB triplet is first normalized to percent:
 
 Valid range:  0.0 – 100.0
 
-Color conversions (XYZ, Lab) are computed through colormath using the chosen
-source color space ("srgb" or "adobergb").
+Color conversions (XYZ, Lab) are computed through ArgyllCMS xicclu using the chosen
+source color space profile.
 
 Ranges:
     XYZ_X, XYZ_Y, XYZ_Z:  unbounded positive; typical printed values 0–100
@@ -158,7 +158,7 @@ The script requires:
     • Python 3.8+
     • numpy
     • Pillow (PIL)
-    • colormath
+    • ArgyllCMS
 
 If missing, the script prints installation instructions and exits.
 
@@ -190,10 +190,8 @@ WORKFLOW SUMMARY
 COMMAND-LINE ARGUMENTS
 ================================================================================
 --image / -i                    Path to input image containing colour patch grid.
-                                Input image must be a display ready D65 image with gamma 2.2 applied.
---image_color_space             [Optional] input image device colour space; choices:
-                                srgb (default), adobergb.
-                                Determines the RGB->XYZ conversion matrices used by colormath.
+                                Input image must be an image target made for printing.
+--image_icc_profile             Input image colour icc/icm profile file path.
 --patch_first_xy                "X,Y" coordinates (floats or ints) of the ***centre***
                                 of the first patch (top-left patch). Origin is top-left of the image.
 --patch_last_xy                 "X,Y" coordinates (floats or ints) of the ***centre*** of the last patch (bottom-right patch).
@@ -236,7 +234,7 @@ COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
 
 - CIEXYZ in output:
   * CIEXYZ (CIE 1931 2° standard observer)
-  * **D65** white reference (Profile Connection Space in ICC)
+  * **D50** white reference (Profile Connection Space in ICC)
   * **Scaled so that white has Y = 100.000000**
   * Numeric precision: six decimal places.
 
@@ -245,9 +243,9 @@ COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
   * L in range ~0..100, a and b around typical -128..128 ranges.
   * Numeric precision: six decimal places.
 
-- All colorimetric output is **D65** and **linear** (no gamma applied in XYZ or Lab).
-  The conversion pipeline in this script applies TRC/matrix conversions according to
-  the selected `--image_color_space` using python-colormath.
+- All colorimetric output is **D50** and **linear** (no gamma applied in XYZ or Lab).
+  The conversion pipeline in this script applies conversions according to
+  the selected `--image_icc_profile` using ArgyllCMS xicclu.
 
 ================================================================================
 NOTES ON ACCURACY
@@ -257,8 +255,8 @@ NOTES ON ACCURACY
   * If the image is 8-bit/channel (most typical images), it will be scaled up
     exactly to 16-bit (value * 257) before colour conversion to reduce rounding
     / mapping error in conversions.
-  * Conversion from RGB -> XYZ -> Lab is done using python-colormath with double
-    precision floats; XYZ is scaled so Yn = 100 and written with 6 decimal places.
+  * Conversion from RGB -> XYZ -> Lab is done using ArgyllCMS xicclu with
+  precision floats; XYZ is scaled so Yn = 100 and written with 6 decimal places.
 
 - This script produces **colorimetrically correct** PCS values
   for the image that was measured.
@@ -274,9 +272,9 @@ For each patch:
    (odd number, min 3, max 60% of patch) is centred at (Cx, Cy).
 3. The script extracts all pixels inside this region.
 4. The sampled RGB values are averaged in 16-bit integer space (8-bit inputs are scaled to 16-bit via *257).
-5. Colour conversions are applied using python-colormath:
+5. Colour conversions are applied using xicclu:
       averaged 16-bit RGB (scaled to 0..1 via /65535)
-          -> colormath: RGB -> CIEXYZ (D65), then XYZ -> Lab (D65)
+          -> colormath: RGB -> CIEXYZ XYZ (D50) -> Lab (D50)
 
 ================================================================================
 Output File Format (ArgyllCMS TI2)
@@ -367,8 +365,8 @@ Image with 10 by 12 grid chart, alphabetic columns and numeric rows:
 Image with 27 by 27 grid chart, alphabetic columns and numeric rows:
     python3 read_image_patch_colors.py \
       --image "Expert Target (large)(729-patches).tif" \
-      --patch_first_xy 56,38 \
-      --patch_last_xy 1234,921 \
+      --patch_first_xy 72,51 \
+      --patch_last_xy 1250,934 \
       --patch_width_height_ratio 1.4 \
       --num_cols 27 \
       --num_rows 27 \
@@ -387,6 +385,9 @@ import os
 import sys
 import re
 import platform
+import subprocess
+import shutil
+import importlib.util
 from dataclasses import dataclass
 from typing import List, Tuple, Sequence, Optional
 
@@ -394,44 +395,64 @@ from typing import List, Tuple, Sequence, Optional
 # Check that required Python packages are installed.
 # Input: None
 # Output: list of missing package names (list[str]).
-# Packages checked: colormath, numpy, Pillow
+# Packages checked: numpy, Pillow
 def check_full_packages() -> list[str]:
     missing = []
-    import importlib.util
 
-    if importlib.util.find_spec("colormath") is None:
-        missing.append("colormath")
+    # 1. Check ArgyllCMS by checking whether xicclu exists in PATH
+    if shutil.which("xicclu") is None:
+        missing.append("ArgyllCMS (xicclu not found in PATH)")
+
+    # 2. Check Python packages
     if importlib.util.find_spec("numpy") is None:
         missing.append("numpy")
     if importlib.util.find_spec("PIL") is None:
         missing.append("Pillow")
+
     return missing
 
 
 # Print platform-specific pip install instructions for missing packages.
-# Input: packages (list[str]) — names of missing packages
-# Output: prints instructions to stdout; no return value.
 def print_install_instructions(packages: list[str]) -> None:
     system = platform.system()
-    print(f"Missing packages detected: {', '.join(packages)}")
-    print("Install them manually with pip, for example:")
-    if system == "Windows":
-        print(f"  python -m pip install {' '.join(packages)}")
-    else:
-        print(f"  python3 -m pip install {' '.join(packages)}")
+    print("\nMissing components detected:\n")
+    for pkg in packages:
+        print(" -", pkg)
+
+    print("\nTo install:")
+
+    if any("ArgyllCMS" in p for p in packages):
+        if system == "Darwin":
+            print("\nInstall ArgyllCMS on macOS:")
+            print("  brew install argyll-cms")
+        elif system == "Windows":
+            print("\nInstall ArgyllCMS on Windows:")
+            print("  Download installer:")
+            print("  https://www.argyllcms.com/")
+        else:
+            print("\nInstall ArgyllCMS for Linux:")
+            print("  sudo apt install argyll")
+
+    # Python packages
+    py_pkgs = [p for p in packages if "ArgyllCMS" not in p]
+    if py_pkgs:
+        if system == "Windows":
+            print(f"\nPython packages:")
+            print(f"  python -m pip install {' '.join(py_pkgs)}")
+        else:
+            print(f"\nPython packages:")
+            print(f"  python3 -m pip install {' '.join(py_pkgs)}")
 
 
-missing_packages = check_full_packages()
-if missing_packages:
-    print_install_instructions(missing_packages)
+missing = check_full_packages()
+if missing:
+    print_install_instructions(missing)
     sys.exit(1)
 
 
 # ---------------- Imports AFTER preflight ----------------
 from PIL import Image
 import numpy as np
-from colormath.color_objects import sRGBColor, AdobeRGBColor, XYZColor, LabColor
-from colormath.color_conversions import convert_color
 
 # ---------- Constants ----------
 DEBUG = False
@@ -534,25 +555,6 @@ def parse_label_range(spec: str) -> tuple[list[str], Optional[int]]:
     raise ValueError(f"Invalid label range format: {spec}")
 
 
-# ---------- Lab <-> XYZ helpers ----------
-# Forward function f(t) used in Lab conversion.
-# Input: t_arr (np.ndarray) ratios X/Xn, Y/Yn, Z/Zn (float)
-# Output: f(t) as np.ndarray same shape — cubic root or linear approx.
-def f_for_lab_arr(t_arr: np.ndarray) -> np.ndarray:
-    t_arr = np.asarray(t_arr, dtype=np.float64)
-    mask = t_arr > EPS
-    out = np.empty_like(t_arr, dtype=np.float64)
-    # Non-linear (cubic root) branch for t > EPS
-    out[mask] = np.cbrt(t_arr[mask])
-    # Linear approximation branch for small t
-    out[~mask] = (K * t_arr[~mask] + 16.0) / 116.0
-    return out
-
-    # Convert RGB -> XYZ, request D50 illuminant if supported
-    try:
-        xyz_obj = convert_color(rgb_obj, XYZColor, target_illuminant='d50')
-    except Exception:
-        xyz_obj = convert_color(rgb_obj, XYZColor)
 # Load an image and return a 16-bit RGB numpy array (HxWx3, uint16).
 # Input: img_path (str), assumes images is RGB and allows no other mode.
 #        Reads RGB 3x8-bit pixels, or 3x16 pixels, true color.
@@ -568,6 +570,12 @@ def load_image_as_16bit_rgb(img_path: str) -> Tuple[np.ndarray, int]:
     if im.mode != "RGB":
         print(f"Error: Unsupported image mode '{im.mode}'. Only RGB images are allowed.")
         sys.exit(1)
+    # Image mode
+    mode = im.mode
+
+    #debug print
+    if DEBUG:
+        print(f"Image has mode: '{im.mode}'. Only RGB images are suppored.")
 
     # Convert to RGB (ensures no alpha, no grayscale)
     im = im.convert("RGB")
@@ -666,62 +674,84 @@ def rgb16_to_argyll_percent(rgb16: Sequence[float]) -> Tuple[float, float, float
     return float(rgb16[0] * factor), float(rgb16[1] * factor), float(rgb16[2] * factor)
 
 
-# Map input color space name to a colormath RGB color class and kwargs.
-# Input: space_name (str) - 'srgb' or 'adobergb'
-# Output: (ColorClass, kwargs dict)
-def get_rgb_class_and_kwargs(space_name: str):
-    s = space_name.lower()
-    if s == 'srgb':
-        return sRGBColor, {}
-    if s in ('adobergb', 'adobergb1998', 'adobergb-1998'):
-        return AdobeRGBColor, {}
-    raise ValueError(f"Unsupported image_color_space: {space_name}")
+# ============================================================
+#  convert_color()  — same function as before
+# ============================================================
+def convert_color(rgb100, icc_profile_path):
+    """
+    Convert a single RGB triplet (0..100) into XYZ and Lab using xicclu.
+
+    Usage:
+        python3 convert_single_color.py sRGB.icm 0.000000 0.000000 100.000000
+    Parameters:
+        rgb100: tuple/list of 3 floats (R,G,B) scaled 0..100
+        icc_profile_path: ICC profile filename (e.g. "sRGB.icm")
+
+    Returns:
+        xyz100_D50: (X, Y, Z)
+        lab100_D50: (L, a, b)
+    """
+    rgb_line = f"{rgb100[0]} {rgb100[1]} {rgb100[2]}"
+    xicclu_input = rgb_line + "\n\n"
+
+    # ------------------------------
+    # 1) XYZ conversion (-pX)
+    # ------------------------------
+    cmd_xyz = ["xicclu", "-ff", "-ir", "-s100", "-pX", icc_profile_path]
+    proc_xyz = subprocess.Popen(cmd_xyz, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
+    out_xyz, _ = proc_xyz.communicate(input=xicclu_input)
+
+    xyz = None
+    for line in out_xyz.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = line.replace("[RGB]", "").replace("[XYZ]", "").replace("-> MatrixFwd ->", "")
+        line = " ".join(line.split())
+        parts = line.split()
+        if len(parts) >= 6:
+            xyz = tuple(map(float, parts[-3:]))
+            break
+    if xyz is None:
+        raise ValueError("Could not parse XYZ output from xicclu.")
+
+    # ------------------------------
+    # 2) Lab conversion (-pl)
+    # ------------------------------
+    cmd_lab = ["xicclu", "-ff", "-ir", "-s100", "-pl", icc_profile_path]
+    proc_lab = subprocess.Popen(cmd_lab, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
+    out_lab, _ = proc_lab.communicate(input=xicclu_input)
+
+    lab = None
+    for line in out_lab.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = (line.replace("[RGB]", "").replace("[LAB]", "").replace("[Lab]", "")
+                     .replace("-> MatrixFwd ->", ""))
+        line = " ".join(line.split())
+        parts = line.split()
+        if len(parts) >= 6:
+            lab = tuple(map(float, parts[-3:]))
+            break
+    if lab is None:
+        raise ValueError("Could not parse Lab output from xicclu.")
+
+    return xyz, lab
 
 
-# Convert averaged 16-bit RGB to CIEXYZ (D65, scaled so Y=100) and Lab (D65).
-# Input: avg_rgb16 sequence of 3 values (0..65535), image_color_space (str)
+# Convert 16-bit RGB percentage to CIEXYZ (D50, scaled so Y=100) and Lab (D50).
+# Input: avg_rgb16 sequence of 3 values (0..100), image_icc_profile (str)
 # Output: (xyz100: ndarray(3,), lab_float: ndarray(3,))
 def rgb16_to_xyz_lab(
-    avg_rgb16: Sequence[float],
-    image_color_space: str,
-    output_illuminant: str
+    rgb_percent: Sequence[float],
+    image_icc_profile: str
     ) -> Tuple[np.ndarray, np.ndarray]:
 
-    # Scale to 0..1 for colormath
-    rgb01 = np.asarray(avg_rgb16, dtype=np.float64) / 65535.0
-
-    ColorClass, kwargs = get_rgb_class_and_kwargs(image_color_space)
-    rgb_obj = ColorClass(rgb01[0], rgb01[1], rgb01[2], **kwargs)
-
-    # ---- XYZ conversion according to requested illuminant ----
-    if output_illuminant.upper() == 'D50':
-        # Force Bradford adaptation to D50 PCS
-        xyz_obj = convert_color(rgb_obj, XYZColor, target_illuminant='d50')
-    else:
-        # Native illuminant of sRGB is D65 → no adaptation
-        xyz_obj = convert_color(rgb_obj, XYZColor)
-
-    # Extract XYZ
-    X = float(xyz_obj.xyz_x)
-    Y = float(xyz_obj.xyz_y)
-    Z = float(xyz_obj.xyz_z)
-
-    # Scale to XYZ where Yn = 100
-    xyz100 = np.array([X * 100.0, Y * 100.0, Z * 100.0], dtype=np.float64)
-
-    # ---- Lab conversion according to requested illuminant ----
-    if output_illuminant.upper() == 'D50':
-        lab_obj = convert_color(xyz_obj, LabColor, target_illuminant='d50')
-    else:
-        # Lab relative to D65 (supported in colormath)
-        lab_obj = convert_color(xyz_obj, LabColor, target_illuminant='d65')
-
-    # Extract LAB
-    L = float(lab_obj.lab_l)
-    a = float(lab_obj.lab_a)
-    b = float(lab_obj.lab_b)
-
-    lab_float = np.array([L, a, b], dtype=np.float64)
+    # ---- XYZ and LAB conversion with D50 illuminant ----
+    xyz100, lab_float = convert_color(rgb_percent, image_icc_profile)
 
     return xyz100, lab_float
 
@@ -893,7 +923,7 @@ def sample_patch(img16: np.ndarray, cx: float, cy: float, half: int, sample_mode
 #   row_pad           : optional int, whether row labels should be zero-padded
 #   col_pad           : optional int, whether column labels should be zero-padded
 #   patch_label_order : 'col_then_row' or 'row_then_col', determines label composition
-#   image_color_space : string, color space of input image ('srgb', 'adobergb', etc.)
+#   image_icc_profile : string, color space icc profile file patch
 #   sample_mode       : 'mean' or 'median', aggregation method for patch sampling
 #   output_order      : 'row_major' or 'column_major', controls traversal order
 #   mirror_output     : bool, if True reverses order of patches per row (row-major) or per column (column-major)
@@ -911,18 +941,18 @@ def extract_patch_data(
     row_pad: Optional[int],
     col_pad: Optional[int],
     patch_label_order: str,
-    image_color_space: str,
+    image_icc_profile: str,
     sample_mode: str,
     output_order: str,
     mirror_output: bool,
-    rotate_grid: int,
-    output_illuminant: str
+    rotate_grid: int
 ) -> Tuple[List[PatchInfo], np.ndarray, np.ndarray]:
 
     patches: List[PatchInfo] = []
     patch_idx = 0
     white_point_xyz = None
     black_point_xyz = None
+    total_patches = geometry.num_rows * geometry.num_cols
 
     # ------------------------------------------------------
     # ROW-MAJOR ORDER
@@ -933,6 +963,12 @@ def extract_patch_data(
             for col in range(geometry.num_cols):
 
                 patch_idx += 1
+                # -------------------------------
+                # Show progress
+                # -------------------------------
+                percent = (patch_idx / total_patches) * 100
+                sys.stdout.write(f"\rProcessing patch {patch_idx}/{total_patches} ({percent:.1f}%)")
+                sys.stdout.flush()
 
                 rlab = row_labels[row]
                 clab = col_labels[col]
@@ -951,13 +987,24 @@ def extract_patch_data(
 
                 avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
                 rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space, output_illuminant)
+                xyz100, lab_float = rgb16_to_xyz_lab(rgb_percent, image_icc_profile)
+
+                # ------------------------------------------------------
+                # DEBUG: Print XYZ/LAB for first 10 patches
+                # ------------------------------------------------------
+                if DEBUG:
+                    if patch_idx <= 10:   # Only first 10
+                        print(f"\n--- DEBUG PATCH {patch_idx}: {patch_label} ---")
+                        print(f"RGB16: {avg_rgb16}")
+                        print(f"RGB %: {rgb_percent}")
+                        print(f"XYZ100: {xyz100}")
+                        print(f"LAB: {lab_float}")
 
                 Y_lum = float(xyz100[1])
                 if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
-                    white_point_xyz = xyz100.copy()
+                    white_point_xyz = tuple(xyz100)
                 if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
-                    black_point_xyz = xyz100.copy()
+                    black_point_xyz = tuple(xyz100)
 
                 patches.append(
                     PatchInfo(
@@ -1008,6 +1055,13 @@ def extract_patch_data(
 
                 patch_idx += 1
 
+                # -------------------------------
+                # Show progress
+                # -------------------------------
+                percent = (patch_idx / total_patches) * 100
+                sys.stdout.write(f"\rProcessing patch {patch_idx}/{total_patches} ({percent:.1f}%)")
+                sys.stdout.flush()
+
                 rlab = row_labels[row]
                 clab = col_labels[col]
                 if row_pad == 1:
@@ -1025,13 +1079,24 @@ def extract_patch_data(
 
                 avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
                 rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-                xyz100, lab_float = rgb16_to_xyz_lab(avg_rgb16, image_color_space, output_illuminant)
+                xyz100, lab_float = rgb16_to_xyz_lab(rgb_percent, image_icc_profile)
+
+                # ------------------------------------------------------
+                # DEBUG: Print XYZ/LAB for first 10 patches
+                # ------------------------------------------------------
+                if DEBUG:
+                    if patch_idx <= 10:   # Only first 10
+                        print(f"\n--- DEBUG PATCH {patch_idx}: {patch_label} ---")
+                        print(f"RGB16: {avg_rgb16}")
+                        print(f"RGB %: {rgb_percent}")
+                        print(f"XYZ100: {xyz100}")
+                        print(f"LAB: {lab_float}")
 
                 Y_lum = float(xyz100[1])
                 if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
-                    white_point_xyz = xyz100.copy()
+                    white_point_xyz = tuple(xyz100)
                 if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
-                    black_point_xyz = xyz100.copy()
+                    black_point_xyz = tuple(xyz100)
 
                 patches.append(
                     PatchInfo(
@@ -1070,6 +1135,8 @@ def extract_patch_data(
 
             for i, p in enumerate(patches, start=1):
                 p.index = i
+
+    print("\nAll patches processed.")
 
     return patches, white_point_xyz, black_point_xyz
 
@@ -1128,13 +1195,13 @@ class TI1Writer(PatchFileWriter):
         with open(self.filename, 'w', encoding='utf8') as fh:
             fh.write("CTI1\n\n")
             fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
-            fh.write('ORIGINATOR "read_image_patch_colors.py (colormath backend)"\n')
+            fh.write('ORIGINATOR "read_image_patch_colors.py"\n')
             fh.write(f'CREATED "{created_ts}"\n')
             fh.write('ACCURATE_EXPECTED_VALUES "true"\n')
 
             # Write approximate white point if available
             if self.white_point_xyz is not None:
-                Xw, Yw, Zw = [float(v) for v in self.white_point_xyz.tolist()]
+                Xw, Yw, Zw = [float(v) for v in self.white_point_xyz]
                 fh.write(f'APPROX_WHITE_POINT "{Xw:.6f} {Yw:.6f} {Zw:.6f}"\n')
             else:
                 fh.write('APPROX_WHITE_POINT "0.000000 0.000000 0.000000"\n')
@@ -1162,6 +1229,7 @@ class TI1Writer(PatchFileWriter):
                         row_vals += [f"{float(v):.6f}" for v in p.xyz100]
                 fh.write(" ".join(row_vals) + "\n")
             fh.write('END_DATA\n')
+
 
             fh.write("CTI1\n\n")
             fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
@@ -1239,7 +1307,7 @@ class TI2Writer(PatchFileWriter):
 
             # Write approximate white point if available
             if self.white_point_xyz is not None:
-                Xw, Yw, Zw = [float(v) for v in self.white_point_xyz.tolist()]
+                Xw, Yw, Zw = [float(v) for v in self.white_point_xyz]
                 fh.write(f'APPROX_WHITE_POINT "{Xw:.6f} {Yw:.6f} {Zw:.6f}"\n')
             else:
                 fh.write('APPROX_WHITE_POINT "0.000000 0.000000 0.000000"\n')
@@ -1334,7 +1402,7 @@ def process_image_to_files(args):
 
     # Load image and compute geometry
     img16, _ = load_image_as_16bit_rgb(args.image)
-    image_color_space = args.image_color_space.lower() if args.image_color_space else 'srgb'
+    image_icc_profile = args.image_icc_profile.lower() if args.image_icc_profile else 'sRGB.icm'
     geometry = compute_grid_geometry(args)
 
     # Extract measurements
@@ -1346,12 +1414,11 @@ def process_image_to_files(args):
         row_pad,
         col_pad,
         args.patch_label_order,
-        image_color_space,
+        image_icc_profile,
         args.sample_mode,
         args.output_order,
         args.mirror_output,
-        args.rotate_grid,
-        args.output_illuminant
+        args.rotate_grid
     )
 
     base_out = os.path.splitext(os.path.basename(args.image))[0]
@@ -1375,7 +1442,7 @@ def process_image_to_files(args):
             args.num_rows,
             args.num_cols,
             row_labels,
-            col_labels,
+            col_labels
         )
         writer.write()
         print("Wrote:", fname)
@@ -1388,8 +1455,8 @@ def process_image_to_files(args):
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Read patch colours from grid image with label metadata.")
     p.add_argument('--image', '-i', required=True, help='Image file path')
-    p.add_argument('--image_color_space', default='srgb', choices=['srgb', 'adobergb'],
-                   help='Input image device colour space (default: srgb)')
+    p.add_argument('--image_icc_profile', default='sRGB.icm',
+                   help='Input image colour icc/icm profile file path (default: sRGB.icm)')
     p.add_argument('--patch_first_xy', required=True, type=parse_xy,
                    help='X,Y of first patch (top-left)')
     p.add_argument('--patch_last_xy', required=True, type=parse_xy,
@@ -1405,12 +1472,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument('--patch_label_order', required=True, choices=["col_then_row", "row_then_col"])
     p.add_argument('--output_color_space', required=True,
                    help='Comma-separated sequence of color spaces to include: RGB, XYZ, LAB')
-    p.add_argument(
-        '--output_illuminant',
-        default='D65',
-        choices=['D50', 'D65'],
-        help='Illuminant used for XYZ/Lab in output files (default: D65).'
-    )
+
     p.add_argument(
         '--sample_mode',
         default='mad',
