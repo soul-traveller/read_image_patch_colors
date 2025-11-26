@@ -33,7 +33,7 @@ This program extracts color values from a rectangular grid of color patches in a
 
 It supports sampling in mean or median mode, configurable patch geometry, numeric or alphabetic labeling patterns, and RGB/XYZ/Lab output combinations.
 
-The script is designed for use in color-management workflows where printed color targets must be scanned or photographed and converted into Argyll measurement files.
+The script is designed for use in color-management workflows where printed color targets are scanned or photographed and converted into Argyll measurement files. Alternatively, convert original calibration target images to attain `.ti1`, `.ti2` and `.csv` files with their patch color data.
 
 Example use cases: 
 
@@ -67,11 +67,11 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
   <tbody>
     <tr>
       <td><code>--image</code> / <code>-i</code></td>
-      <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a <i>display-referred</i>, D65-based RGB image encoded using a <b>2.2 gamma</b> transfer curve (typical scanned/photographed targets).</td>
+      <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a RGB image used as target for calibration.</td>
     </tr>
     <tr>
       <td><code>--image_icc_profile</code></td>
-      <td>Input image colour icc/icm profile file path.<br>
+      <td>Input image colour icc/icm profile file path used for calculation of XYZ and LAB values for D50 illumination. For simplicity, place icc file in same folder as script.<br>
       		• <code>sRGB.icm</code> <i>(default)</i></td>
     <tr>
       <td><code>--patch_first_xy</code></td>
@@ -95,7 +95,7 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
     </tr>
     <tr>
       <td><code>--sample_fraction</code></td>
-      <td>Fraction of patch area to sample (float). Default: <b>0.20</b> (20%).<br>Constraints: <code>0 &lt; f ≤ 0.6</code>.<br>The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.</td>
+      <td>Fraction of patch area to sample (float). Default: <b>0.50</b> (20%).<br>Constraints: <code>0 &lt; f ≤ 0.6</code>.<br>The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.</td>
     </tr>
     <tr>
       <td><code>--row_labels</code></td>
@@ -222,7 +222,7 @@ Contains: header, APPROX\_WHITE\_POINT, strip/patch index patterns, STEPS\_IN\_P
 `SAMPLE_LOC` uses labels like “A1”, “D14”, etc.
 
 ### 3. CSV (.csv)
-Space-separated table with SAMPLE_ID, SAMPLE_LOC, and selected color values.
+Space-separated table with SAMPLE\_ID, SAMPLE\_LOC, and selected color values.
 
 # Patch Value Ranges
 RGB: 0–100<br>
@@ -295,8 +295,11 @@ Examples:
 - `LAB` → LAB_L LAB_A LAB_B
 
 # Error Conditions
+Use `--debug` flag to investigate issues relating to color on patches.
+
 Script stops if:
 
+- Coordinates and Row/Column numbers cause measurement areas to be missaligned with patch centres of the target image.
 - Label mismatch
 - Invalid color tokens
 - sample_fraction invalid

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 read_image_patch_colors.py
-Version: 1.4.2
+Version: 1.4.6
 
 ================================================================================
-READ_IMAGE_PATCH_COLORS.PY — COMPLETE DOCUMENTATION
+READ_IMAGE_PATCH_COLORS.PY — DOCUMENTATION
 ================================================================================
 
 OVERVIEW
@@ -58,6 +58,7 @@ Defines the fraction of the *smaller* patch dimension used for sampling.
 Sampling modes:
     • "mean"
     • "median"
+    • "mad" (default)
 
 The sampling area is square and centered within each patch.
 
@@ -220,7 +221,7 @@ COMMAND-LINE ARGUMENTS
                                   RGB,XYZ       →   TI1 includes RGB,XYZ; TI2/CSV includes RGB,XYZ
                                   XYZ,LAB,RGB   →   TI1 includes XYZ,RGB; TI2/CSV includes XYZ,LAB,RGB
                                 Output columns follow the specified sequence.
---sample_fraction               Fraction of patch to sample; default 0.20 (20%).
+--sample_fraction               Fraction of patch to sample; default 0.50 (50%).
                                 The sampling square is centred on the patch centre and is clamped to
                                 at least 3×3 pixels and at most 60% of patch size.
 --sample_mode                    "mean" (default) or "median" for robust sampling
@@ -458,11 +459,13 @@ import numpy as np
 DEBUG = False
 DEBUG_PRINT_LIMIT = 10
 DEBUG_AVG_COUNTER = 0
+EXTREME_OUTLIER_PATCHES = 0
+EXTREME_OUTLIER_LIMIT = 5
 DEBUG_SAMPLE_COUNTER = 0
-DEFAULT_SAMPLE_FRACTION = 0.20
+DEFAULT_SAMPLE_FRACTION = 0.50
 EPS = (6.0 / 29.0) ** 3   # Threshold for linearization in Lab
 K = 24389.0 / 27.0        # Linear coefficient in Lab conversion
-
+RGB_PERCENT_BATCH = []
 
 # ---------- Utilities ----------
 # Create a formatted timestamp string suitable for TI files (CTI1/CTI2).
@@ -617,53 +620,89 @@ def average_block_rgb16(block: np.ndarray, mode: str = 'mad') -> np.ndarray:
 
     arr = block.reshape(-1, 3).astype(np.float64)
 
+    # ============================================================
+    # 1. Compute output value depending on mode (but DO NOT RETURN)
+    # ============================================================
     # ----- simple mean -----
     if mode == 'mean':
-        return arr.mean(axis=0)
+        result = arr.mean(axis=0)
 
     # ----- simple median -----
-    if mode == 'median':
-        return np.median(arr, axis=0)
+    elif mode == 'median':
+        result = np.median(arr, axis=0)
 
-    # ----- robust MAD-sigma-clipped mode -----
-    def robust_channel_mean(values: np.ndarray, k: float = 3.0, min_sigma: float = 1.0) -> float:
-        if values.size == 0:
-            return 0.0
+    else:  # mode == 'mad'
+        # ----- robust MAD-sigma-clipped mode -----
+        def robust_channel_mean(values: np.ndarray, k: float = 3.0, min_sigma: float = 1.0) -> float:
+            if values.size == 0:
+                return 0.0
+            med = np.median(values)
+            mad = np.median(np.abs(values - med))
+            # Convert MAD → robust sigma estimate with minimum floor
+            sigma = max(1.4826 * mad, min_sigma)
+            # sigma-based threshold
+            abs_thresh = k * sigma
+            mask = np.abs(values - med) <= abs_thresh
+            if mask.sum() == 0:
+                # If all rejected, use median
+                return float(med)
+            return float(values[mask].mean())
+
+        # Apply per-channel MAD clipping
+        r = robust_channel_mean(arr[:, 0])
+        g = robust_channel_mean(arr[:, 1])
+        b = robust_channel_mean(arr[:, 2])
+        result = np.array([r, g, b], dtype=np.float64)
+
+        # Debug native and robust mean for first 10 MAD patches
+        if DEBUG and mode == 'mad' and DEBUG_AVG_COUNTER < DEBUG_PRINT_LIMIT:
+            patch_num = DEBUG_AVG_COUNTER + 1
+            print(f"--- PATCH {patch_num} ---")
+            print(f"Naive mean (16-bit): {arr.mean(axis=0)}")
+            print(f"Robust mean (16-bit): {result}")
+            # Show MAD / sigma info per channel
+            for i, ch in enumerate(["R", "G", "B"]):
+                med = np.median(arr[:, i])
+                mad = np.median(np.abs(arr[:, i] - med))
+                sigma = max(1.4826 * mad, 1.0)
+                mask = np.abs(arr[:, i] - med) <= 3 * sigma
+                rejected = (~mask).sum()
+                print(f"{ch}-channel: median={med:.1f}, MAD={mad:.1f}, sigma={sigma:.1f}, outliers removed={rejected}")
+            DEBUG_AVG_COUNTER += 1
+
+    # ------------------------------------------------------------
+    #  EXTREME OUTLIER DETECTION (10% deviation rule)
+    #  We compare every pixel value with the chosen aggregate:
+    #     mad → result
+    # ------------------------------------------------------------
+    global EXTREME_OUTLIER_PATCHES
+
+    # Compute MAD-based reference (per channel) for *all* modes
+    def mad_ref(values: np.ndarray, min_sigma: float = 1.0):
         med = np.median(values)
         mad = np.median(np.abs(values - med))
-        # Convert MAD → robust sigma estimate with minimum floor
         sigma = max(1.4826 * mad, min_sigma)
-        # sigma-based threshold
-        abs_thresh = k * sigma
-        mask = np.abs(values - med) <= abs_thresh
-        if mask.sum() == 0:
-            # If all rejected, use median
-            return float(med)
-        return float(values[mask].mean())
+        return med, sigma
 
-    # Apply per-channel MAD clipping
-    r = robust_channel_mean(arr[:, 0])
-    g = robust_channel_mean(arr[:, 1])
-    b = robust_channel_mean(arr[:, 2])
-    robust_mean = np.array([r, g, b], dtype=np.float64)
+    # Per-channel median + sigma
+    med_r, sig_r = mad_ref(arr[:, 0])
+    med_g, sig_g = mad_ref(arr[:, 1])
+    med_b, sig_b = mad_ref(arr[:, 2])
 
-    # Debug native and robust mean for first 10 MAD patches
-    if DEBUG and mode == 'mad' and DEBUG_AVG_COUNTER < DEBUG_PRINT_LIMIT:
-        patch_num = DEBUG_AVG_COUNTER + 1
-        print(f"--- PATCH {patch_num} ---")
-        print(f"Naive mean (16-bit): {arr.mean(axis=0)}")
-        print(f"Robust mean (16-bit): {robust_mean}")
-        # Show MAD / sigma info per channel
-        for i, ch in enumerate(["R", "G", "B"]):
-            med = np.median(arr[:, i])
-            mad = np.median(np.abs(arr[:, i] - med))
-            sigma = max(1.4826 * mad, 1.0)
-            mask = np.abs(arr[:, i] - med) <= 3 * sigma
-            rejected = (~mask).sum()
-            print(f"{ch}-channel: median={med:.1f}, MAD={mad:.1f}, sigma={sigma:.1f}, outliers removed={rejected}")
-        DEBUG_AVG_COUNTER += 1
+    med_vec = np.array([med_r, med_g, med_b], dtype=np.float64)
+    sigma_vec = np.array([sig_r, sig_g, sig_b], dtype=np.float64)
 
-    return robust_mean
+    # Define "extreme" as 10% of median or 5 units minimum
+    abs_thresh = np.maximum(np.abs(med_vec) * 0.10, 5.0)
+
+    # Pixels where ANY channel deviates too far from the MAD-median
+    diffs = np.abs(arr - med_vec) > abs_thresh
+    has_extreme = np.any(np.any(diffs, axis=1))
+
+    if has_extreme:
+        EXTREME_OUTLIER_PATCHES += 1
+
+    return result
 
 
 # Convert 16-bit RGB to Argyll iRGB percentage (0.0 .. 100.0)
@@ -674,86 +713,84 @@ def rgb16_to_argyll_percent(rgb16: Sequence[float]) -> Tuple[float, float, float
     return float(rgb16[0] * factor), float(rgb16[1] * factor), float(rgb16[2] * factor)
 
 
-# ============================================================
-#  convert_color()  — same function as before
-# ============================================================
-def convert_color(rgb100, icc_profile_path):
+def convert_color_batch(rgb_percent_list, icc_profile_path):
     """
-    Convert a single RGB triplet (0..100) into XYZ and Lab using xicclu.
+    Batch-convert a list of RGB percentages into XYZ and Lab using xicclu,
+    with only one subprocess call for XYZ and one for Lab.
 
-    Usage:
-        python3 convert_single_color.py sRGB.icm 0.000000 0.000000 100.000000
-    Parameters:
-        rgb100: tuple/list of 3 floats (R,G,B) scaled 0..100
-        icc_profile_path: ICC profile filename (e.g. "sRGB.icm")
-
+    rgb_percent_list: list of (R,G,B) floats 0..100
     Returns:
-        xyz100_D50: (X, Y, Z)
-        lab100_D50: (L, a, b)
+        xyz_list: list of (X,Y,Z)
+        lab_list: list of (L,a,b)
     """
-    rgb_line = f"{rgb100[0]} {rgb100[1]} {rgb100[2]}"
-    xicclu_input = rgb_line + "\n\n"
 
-    # ------------------------------
-    # 1) XYZ conversion (-pX)
-    # ------------------------------
+    # ------------------------------------------------
+    # Build xicclu input block
+    # ------------------------------------------------
+    xicclu_input = "\n".join(
+        f"{rgb[0]} {rgb[1]} {rgb[2]}" for rgb in rgb_percent_list
+    ) + "\n\n"
+
+    # ------------------------------------------------
+    # Run xicclu for XYZ
+    # ------------------------------------------------
     cmd_xyz = ["xicclu", "-ff", "-ir", "-s100", "-pX", icc_profile_path]
-    proc_xyz = subprocess.Popen(cmd_xyz, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True)
-    out_xyz, _ = proc_xyz.communicate(input=xicclu_input)
+    out_xyz = subprocess.run(
+        cmd_xyz, input=xicclu_input, capture_output=True, text=True
+    ).stdout
 
-    xyz = None
+    # ------------------------------------------------
+    # Run xicclu for Lab
+    # ------------------------------------------------
+    cmd_lab = ["xicclu", "-ff", "-ir", "-s100", "-pl", icc_profile_path]
+    out_lab = subprocess.run(
+        cmd_lab, input=xicclu_input, capture_output=True, text=True
+    ).stdout
+
+    # ------------------------------------------------
+    # Parse XYZ
+    # ------------------------------------------------
+    xyz_list = []
     for line in out_xyz.splitlines():
         line = line.strip()
         if not line:
             continue
-        line = line.replace("[RGB]", "").replace("[XYZ]", "").replace("-> MatrixFwd ->", "")
-        line = " ".join(line.split())
+        line = line.replace("[RGB]", "").replace("[XYZ]", "") \
+                   .replace("->", "").replace("MatrixFwd", "")
         parts = line.split()
-        if len(parts) >= 6:
-            xyz = tuple(map(float, parts[-3:]))
-            break
-    if xyz is None:
-        raise ValueError("Could not parse XYZ output from xicclu.")
+        if len(parts) >= 3:
+            xyz_list.append(tuple(map(float, parts[-3:])))
 
-    # ------------------------------
-    # 2) Lab conversion (-pl)
-    # ------------------------------
-    cmd_lab = ["xicclu", "-ff", "-ir", "-s100", "-pl", icc_profile_path]
-    proc_lab = subprocess.Popen(cmd_lab, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True)
-    out_lab, _ = proc_lab.communicate(input=xicclu_input)
-
-    lab = None
+    # ------------------------------------------------
+    # Parse Lab
+    # ------------------------------------------------
+    lab_list = []
     for line in out_lab.splitlines():
         line = line.strip()
         if not line:
             continue
-        line = (line.replace("[RGB]", "").replace("[LAB]", "").replace("[Lab]", "")
-                     .replace("-> MatrixFwd ->", ""))
-        line = " ".join(line.split())
+        line = line.replace("[RGB]", "").replace("[LAB]", "").replace("[Lab]", "") \
+                   .replace("->", "").replace("MatrixFwd", "")
         parts = line.split()
-        if len(parts) >= 6:
-            lab = tuple(map(float, parts[-3:]))
-            break
-    if lab is None:
-        raise ValueError("Could not parse Lab output from xicclu.")
+        if len(parts) >= 3:
+            lab_list.append(tuple(map(float, parts[-3:])))
 
-    return xyz, lab
+    if len(xyz_list) != len(rgb_percent_list) or len(lab_list) != len(rgb_percent_list):
+        raise ValueError("Parsed xicclu batch results do not match input count.")
+
+    return xyz_list, lab_list
 
 
-# Convert 16-bit RGB percentage to CIEXYZ (D50, scaled so Y=100) and Lab (D50).
-# Input: avg_rgb16 sequence of 3 values (0..100), image_icc_profile (str)
-# Output: (xyz100: ndarray(3,), lab_float: ndarray(3,))
-def rgb16_to_xyz_lab(
-    rgb_percent: Sequence[float],
-    image_icc_profile: str
-    ) -> Tuple[np.ndarray, np.ndarray]:
+def rgb16_to_xyz_lab(rgb_percent, image_icc_profile):
+    """
+    No longer converts immediately!
+    Simply store the rgb_percent and return placeholders.
+    Actual XYZ/Lab arrive after batch processing.
+    """
+    RGB_PERCENT_BATCH.append(tuple(rgb_percent))
 
-    # ---- XYZ and LAB conversion with D50 illuminant ----
-    xyz100, lab_float = convert_color(rgb_percent, image_icc_profile)
-
-    return xyz100, lab_float
+    # placeholders – will be overwritten later
+    return (None, None)
 
 
 # ---------- Main Processing Data Classes ----------
@@ -953,6 +990,9 @@ def extract_patch_data(
     white_point_xyz = None
     black_point_xyz = None
     total_patches = geometry.num_rows * geometry.num_cols
+    rgb_percent_list = []
+    # mapping from patch label to its RGB index in rgb_percent_list
+    rgb_index_by_label = {}
 
     # ------------------------------------------------------
     # ROW-MAJOR ORDER
@@ -987,24 +1027,21 @@ def extract_patch_data(
 
                 avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
                 rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-                xyz100, lab_float = rgb16_to_xyz_lab(rgb_percent, image_icc_profile)
+                rgb_percent_list.append(rgb_percent)
+                # Track RGB index by label for later
+                rgb_index_by_label[patch_label] = len(rgb_percent_list) - 1
 
                 # ------------------------------------------------------
-                # DEBUG: Print XYZ/LAB for first 10 patches
+                # EXCESSIVE OUTLIER SAFETY CHECK
                 # ------------------------------------------------------
-                if DEBUG:
-                    if patch_idx <= 10:   # Only first 10
-                        print(f"\n--- DEBUG PATCH {patch_idx}: {patch_label} ---")
-                        print(f"RGB16: {avg_rgb16}")
-                        print(f"RGB %: {rgb_percent}")
-                        print(f"XYZ100: {xyz100}")
-                        print(f"LAB: {lab_float}")
-
-                Y_lum = float(xyz100[1])
-                if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
-                    white_point_xyz = tuple(xyz100)
-                if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
-                    black_point_xyz = tuple(xyz100)
+                if EXTREME_OUTLIER_PATCHES > EXTREME_OUTLIER_LIMIT:
+                    print("\n\nError: multiple patch measurements has detected extreme value outliers. "
+                          "This may be due to the measurement area not being placed properly within the "
+                          "patch areas of the target image. Typically, wrong input in any of the following "
+                          "arguments may cause this: '--patch_first_xy', '--patch_last_xy', "
+                          "'--patch_width_height_ratio', '--num_cols' or '--num_rows'.\n\n"
+                          "Please verify command inputs and try again.\n")
+                    sys.exit(1)
 
                 patches.append(
                     PatchInfo(
@@ -1012,8 +1049,8 @@ def extract_patch_data(
                         label=patch_label,
                         rgb16=avg_rgb16,
                         rgb_percent=rgb_percent,
-                        xyz100=xyz100,
-                        lab=lab_float
+                        xyz100=(None, None, None),
+                        lab=(None, None, None)
                     )
                 )
 
@@ -1079,24 +1116,9 @@ def extract_patch_data(
 
                 avg_rgb16 = sample_patch(img16, cx, cy, geometry.half, sample_mode)
                 rgb_percent = rgb16_to_argyll_percent(avg_rgb16)
-                xyz100, lab_float = rgb16_to_xyz_lab(rgb_percent, image_icc_profile)
-
-                # ------------------------------------------------------
-                # DEBUG: Print XYZ/LAB for first 10 patches
-                # ------------------------------------------------------
-                if DEBUG:
-                    if patch_idx <= 10:   # Only first 10
-                        print(f"\n--- DEBUG PATCH {patch_idx}: {patch_label} ---")
-                        print(f"RGB16: {avg_rgb16}")
-                        print(f"RGB %: {rgb_percent}")
-                        print(f"XYZ100: {xyz100}")
-                        print(f"LAB: {lab_float}")
-
-                Y_lum = float(xyz100[1])
-                if white_point_xyz is None or Y_lum > float(white_point_xyz[1]):
-                    white_point_xyz = tuple(xyz100)
-                if black_point_xyz is None or Y_lum < float(black_point_xyz[1]):
-                    black_point_xyz = tuple(xyz100)
+                rgb_percent_list.append(rgb_percent)
+                # Track RGB index by label for later
+                rgb_index_by_label[patch_label] = len(rgb_percent_list) - 1
 
                 patches.append(
                     PatchInfo(
@@ -1104,8 +1126,8 @@ def extract_patch_data(
                         label=patch_label,
                         rgb16=avg_rgb16,
                         rgb_percent=rgb_percent,
-                        xyz100=xyz100,
-                        lab=lab_float
+                        xyz100=(None, None, None),
+                        lab=(None, None, None)
                     )
                 )
 
@@ -1135,6 +1157,42 @@ def extract_patch_data(
 
             for i, p in enumerate(patches, start=1):
                 p.index = i
+
+    # ------------------------------------------------------
+    # FINAL STEP: batch-convert all RGB% values using xicclu
+    # ------------------------------------------------------
+    xyz_list, lab_list = convert_color_batch(rgb_percent_list, image_icc_profile)
+
+    if len(xyz_list) != len(patches):
+        raise RuntimeError("XYZ/Lab list size mismatch with patches.")
+
+    # Assign results to each patch (preserves order, label-based assignment)
+    for p in patches:
+        idx = rgb_index_by_label[p.label]   # get the original RGB index for this label
+        p.xyz100 = xyz_list[idx]
+        p.lab    = lab_list[idx]
+
+    white_point_xyz = None
+    black_point_xyz = None
+
+    for p in patches:
+        Y = p.xyz100[1]
+        if white_point_xyz is None or Y > white_point_xyz[1]:
+            white_point_xyz = p.xyz100
+        if black_point_xyz is None or Y < black_point_xyz[1]:
+            black_point_xyz = p.xyz100
+
+    # ------------------------------------------------------
+    # DEBUG: Print XYZ/LAB for first 10 patches
+    # ------------------------------------------------------
+    if DEBUG:
+        print("\n\n--- DEBUG: First 10 patches with XYZ/LAB ---")
+        for i, p in enumerate(patches[:10], 1):
+            print(f"\nPatch {i}: {p.label}")
+            print(f"RGB16    : {p.rgb16}")
+            print(f"RGB %    : {p.rgb_percent}")
+            print(f"XYZ100   : {p.xyz100}")
+            print(f"LAB      : {p.lab}")
 
     print("\nAll patches processed.")
 
