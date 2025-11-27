@@ -72,7 +72,16 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
     <tr>
       <td><code>--image_icc_profile</code></td>
       <td>Input image colour icc/icm profile file path used for calculation of XYZ and LAB values for D50 illumination. For simplicity, place icc file in same folder as script.<br>
-      		• <code>sRGB.icm</code> <i>(default)</i></td>
+      		- <code>sRGB.icm</code> <i>(default)</i><br><br>
+      		Supported path formats:<br>
+      		- MyProfile.icm<br>
+      		- /System/Library/ColorSync/Profiles/MyProfile.icc<br>
+      		- ./profiles/AdobeRGB1998.icc<br>
+      		- ../MyProfile.icc (one folder up)<br>
+      		- C:\Windows\MyProfile.icm<br>
+      		- C:/Color/MyProfile.icm<br>
+      		- /usr/share/color/icc/MyProfile.icc
+      		</td>
     <tr>
       <td><code>--patch_first_xy</code></td>
       <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the first patch</b> (top-left). Accepts integers or floats.</td>
