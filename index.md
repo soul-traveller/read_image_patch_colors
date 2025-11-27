@@ -421,7 +421,7 @@ python3 read_image_patch_colors.py \
 ## 36×26 LaserSoft target with numeric rows, alphabetic columns
 ```
 python3 read_image_patch_colors.py \
-  --image "LaserSoft_Advanced_Target-display.tif" \
+  --image "LaserSoft Advanced ISO12641-2 Target (864-patches).tif" \
   --patch_first_xy 168,168 \
   --patch_last_xy 1335,935 \
   --patch_width_height_ratio 1.0 \
