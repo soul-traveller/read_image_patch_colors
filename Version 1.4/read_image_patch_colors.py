@@ -465,7 +465,6 @@ DEBUG_SAMPLE_COUNTER = 0
 DEFAULT_SAMPLE_FRACTION = 0.50
 EPS = (6.0 / 29.0) ** 3   # Threshold for linearization in Lab
 K = 24389.0 / 27.0        # Linear coefficient in Lab conversion
-RGB_PERCENT_BATCH = []
 
 # ---------- Utilities ----------
 # Create a formatted timestamp string suitable for TI files (CTI1/CTI2).
@@ -779,18 +778,6 @@ def convert_color_batch(rgb_percent_list, icc_profile_path):
         raise ValueError("Parsed xicclu batch results do not match input count.")
 
     return xyz_list, lab_list
-
-
-def rgb16_to_xyz_lab(rgb_percent, image_icc_profile):
-    """
-    No longer converts immediately!
-    Simply store the rgb_percent and return placeholders.
-    Actual XYZ/Lab arrive after batch processing.
-    """
-    RGB_PERCENT_BATCH.append(tuple(rgb_percent))
-
-    # placeholders – will be overwritten later
-    return (None, None)
 
 
 # ---------- Main Processing Data Classes ----------
@@ -1199,6 +1186,46 @@ def extract_patch_data(
     return patches, white_point_xyz, black_point_xyz
 
 
+def resolve_icc_profile_path(profile_arg: str) -> str:
+    """
+    Resolve and validate ICC/ICM profile path.
+    - Accepts either a filename (e.g., 'sRGB.icm') or a full path.
+    - If only filename is given, looks in the script directory.
+    - Ensures file exists on Windows, macOS, Linux.
+    - Users can pass, or similar:
+        '--image_icc_profile sRGB.icm'
+        '--image_icc_profile /System/Library/ColorSync/Profiles/sRGB Profile.icc'
+        '--image_icc_profile ./profiles/AdobeRGB1998.icc'
+        '--image_icc_profile C:/Color/MyProfile.icm'
+        '--image_icc_profile /usr/share/color/icc/DisplayP3.icc'
+    Returns:
+        Absolute validated path.
+
+    Raises:
+        FileNotFoundError with user-friendly message if not found.
+    """
+
+    # 1) Determine folder where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 2) If user provided a full/relative path, check it directly
+    if os.path.sep in profile_arg or profile_arg.startswith("."):
+        candidate = os.path.abspath(profile_arg)
+        if os.path.isfile(candidate):
+            return candidate
+    else:
+        # 3) No path in input → look in the script directory
+        candidate = os.path.join(script_dir, profile_arg)
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+
+    # 4) Not found → error message
+    raise FileNotFoundError(
+        f"Error: provided ICC/ICM profile '{profile_arg}' for argument '--image_icc_profile' "
+        f"not found. Please provide a correct file path. For simplicity the ICC/ICM profile "
+        f"can be copied to the folder location of this script."
+    )
+
 
 # -------- File Writers --------
 class PatchFileWriter:
@@ -1562,6 +1589,15 @@ def main():
 
     parser = build_arg_parser()
     args = parser.parse_args()
+
+    # --------------------------
+    # Validate ICC/ICM profile
+    # --------------------------
+    try:
+        args.image_icc_profile = resolve_icc_profile_path(args.image_icc_profile)
+    except FileNotFoundError as e:
+        print(str(e))
+        sys.exit(1)
 
     DEBUG = args.debug
     DEBUG_AVG_COUNTER = 0
