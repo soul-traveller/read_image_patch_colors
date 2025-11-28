@@ -87,7 +87,8 @@ Each sampled RGB triplet is first normalized to percent:
 Valid range:  0.0 – 100.0
 
 Color conversions (XYZ, Lab) are computed through ArgyllCMS xicclu using the chosen
-source color space profile.
+source color space profile. Absolute colorimetric intent with D50 illuminant is used,
+same as how ArgyllCMS targen creates patch colors.
 
 Ranges:
     XYZ_X, XYZ_Y, XYZ_Z:  unbounded positive; typical printed values 0–100
@@ -733,9 +734,9 @@ def convert_color_batch(rgb_percent_list, icc_profile_path):
     ) + "\n\n"
 
     # ------------------------------------------------
-    # Run xicclu for XYZ
+    # Run xicclu for XYZ (use -i a = absolute colorimetric intent with D50, same as targen does)
     # ------------------------------------------------
-    cmd_xyz = ["xicclu", "-ff", "-ir", "-s100", "-pX", icc_profile_path]
+    cmd_xyz = ["xicclu", "-ff", "-ia", "-s100", "-pX", icc_profile_path]
     out_xyz = subprocess.run(
         cmd_xyz, input=xicclu_input, capture_output=True, text=True
     ).stdout

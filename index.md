@@ -35,7 +35,7 @@ It supports sampling in mean or median mode, configurable patch geometry, numeri
 
 The script is designed for use in color-management workflows where printed color targets are scanned or photographed and converted into Argyll measurement files. Alternatively, convert original calibration target images to attain `.ti1`, `.ti2` and `.csv` files with their patch color data.
 
-Example use cases: 
+Example use cases:
 
 1. Using the image of a reference target, create a `.ti1` file so thatn one may use ArgyllCMS `printtarg` command and generate a target using the colors of the image, which then can be used to create a printer profile.
 
@@ -72,16 +72,16 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
     <tr>
       <td><code>--image_icc_profile</code></td>
       <td>Input image colour icc/icm profile file path used for calculation of XYZ and LAB values for D50 illumination. For simplicity, place icc file in same folder as script.<br>
-      		- <code>sRGB.icm</code> <i>(default)</i><br><br>
-      		Supported path formats:<br>
-      		- MyProfile.icm<br>
-      		- /System/Library/ColorSync/Profiles/MyProfile.icc<br>
-      		- ./profiles/AdobeRGB1998.icc<br>
-      		- ../MyProfile.icc (one folder up)<br>
-      		- C:\Windows\MyProfile.icm<br>
-      		- C:/Color/MyProfile.icm<br>
-      		- /usr/share/color/icc/MyProfile.icc
-      		</td>
+              - <code>sRGB.icm</code> <i>(default)</i><br><br>
+              Supported path formats:<br>
+              - MyProfile.icm<br>
+              - /System/Library/ColorSync/Profiles/MyProfile.icc<br>
+              - ./profiles/AdobeRGB1998.icc<br>
+              - ../MyProfile.icc (one folder up)<br>
+              - C:\Windows\MyProfile.icm<br>
+              - C:/Color/MyProfile.icm<br>
+              - /usr/share/color/icc/MyProfile.icc
+              </td>
     <tr>
       <td><code>--patch_first_xy</code></td>
       <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the first patch</b> (top-left). Accepts integers or floats.</td>
@@ -207,17 +207,20 @@ Sampled RGB → RGB percentage (0–100):
 `RGB_percent = (R_16bit / 65535) * 100`
 
 Conversions use ArgyllCMS xicclu with selected color icc profile (default “sRGB.icm”).
+Absolute colorimetric intent with D50 illuminant is used, same as how ArgyllCMS targen creates patch colors.
 
 The patch with the highest XYZ_Y is stored as `APPROX_WHITE_POINT`.
 
 XYZ output:
-• CIE 1931 2°
-• Chromatically adapted to D50
-• White scaled to Y=100
+
+- CIE 1931 2°
+- Absolute colorimetric intent adapted to D50
+- White scaled to Y=100
 
 Lab output:
-• CIE Lab (1976)
-• D50 reference
+
+- CIE Lab (1976)
+- D50 reference, Absolute colorimetric intent
 
 # Output Files
 Three files:
