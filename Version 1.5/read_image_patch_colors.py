@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 read_image_patch_colors.py
-Version: 1.4.6
+Version: 1.5.0
 
 ================================================================================
 READ_IMAGE_PATCH_COLORS.PY — DOCUMENTATION
@@ -407,7 +407,9 @@ def check_full_packages() -> list[str]:
     # 2. Check Python packages
     if importlib.util.find_spec("numpy") is None:
         missing.append("numpy")
-    if importlib.util.find_spec("PIL") is None:
+
+    # Pillow must be checked via PIL.Image, not PIL
+    if importlib.util.find_spec("PIL.Image") is None:
         missing.append("Pillow")
 
     return missing
