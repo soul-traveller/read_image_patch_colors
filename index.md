@@ -25,7 +25,7 @@
 - [Examples](#examples)
 
 # Overview
-This program extracts color values from a rectangular grid of color patches in an image, computes colorimetric values (RGB percentages, XYZ, Lab), applies row/column labeling rules, and writes three output files:
+This program extracts color values from a rectangular grid of color patches in an image, computes colorimetric values (RGB percentages, XYZ, Lab and approximate white point), applies row/column labeling rules, and writes three output files:
 
 - ArgyllCMS .ti1 file
 - ArgyllCMS .ti2 file
@@ -70,11 +70,11 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
       <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a RGB image used as target for calibration.</td>
     </tr>
     <tr>
-      <td><code>--image_icc_profile</code></td>
-      <td>Input image colour icc/icm profile file path used for calculation of XYZ and LAB values for D50 illumination. For simplicity, place icc file in same folder as script.<br>
-              - <code>sRGB.icm</code> <i>(default)</i><br><br>
+      <td><code>--pre_cond_profile</code></td>
+      <td>ICC/ICM profile file path, used as device pre-conditioning profile. Default: 'sRGB.icm'. This adapts/shapes the XYZ and LAB values to a known device/printer profile or color space profile. This also affects the approx. white point value. For simplicity, place icc file in same folder as script.
+      <br><br>
               Supported path formats:<br>
-              - MyProfile.icm<br>
+              - MyProfile.icm (current folder)<br>
               - /System/Library/ColorSync/Profiles/MyProfile.icc<br>
               - ./profiles/AdobeRGB1998.icc<br>
               - ../MyProfile.icc (one folder up)<br>
@@ -124,7 +124,7 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
     </tr>
     <tr>
       <td><code>--sample_mode</code></td>
-      <td>Patch sampling aggregation method:<br>• <code>mean</code> – arithmetic mean (not robust)<br>• <code>median</code> – robust, but biases asymmetric patches<br>• <code>mad</code> <i>(default)</i> – robust mean via MAD-based sigma clipping</td>
+      <td>Patch sampling aggregation method:<br>• <code>mad</code> <i>(default)</i> – robust mean via MAD-based sigma clipping<br>• <code>mean</code> – arithmetic mean (not robust)<br>• <code>median</code> – robust, but biases asymmetric patches</td>
     </tr>
     <tr>
       <td><code>--output_order</code></td>
@@ -152,10 +152,6 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
 # Image Input
 Accepted image types: any PIL-compatible raster file
 Color depth: handled as 16-bit RGB internally
-Color space:
-
-- "srgb" (default)
-- "adobergb"
 
 Parameter: `--image` / `-i`
 Provides the path to the patch-grid image.
@@ -178,9 +174,9 @@ Defines fraction of the *smaller* patch dimension used for sampling.
 
 Sampling modes (parameter `--sample_mode`):
 
+- mad    – robust mean using MAD-based sigma clipping (default)
 - mean   – plain arithmetic mean (sensitive to outliers)
 - median – pure median (very robust, but may bias bright/dark values)
-- mad    – robust mean using MAD-based sigma clipping (default)
 
 Sampling region is square, centered in each patch.
 

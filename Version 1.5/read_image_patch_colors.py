@@ -10,14 +10,14 @@ READ_IMAGE_PATCH_COLORS.PY — DOCUMENTATION
 OVERVIEW
 --------
 This program extracts color values from a rectangular grid of color patches in
-an image, computes colorimetric values (RGB percentages, XYZ, Lab), applies row/
-column labeling rules, and writes three output files:
+an image, computes colorimetric values (RGB percentages, XYZ, Lab and approximate
+white point), applies row/column labeling rules, and writes three output files:
 
     • ArgyllCMS .ti1 file
     • ArgyllCMS .ti2 file
     • CSV file (space-separated)
 
-It supports sampling in mean or median mode, configurable patch geometry,
+It supports sampling in mean, median or MAD-based sigma clipping mode, configurable patch geometry,
 numeric or alphabetic labeling patterns, and RGB/XYZ/Lab output combinations.
 
 The script is designed for use in color-management workflows where printed color
@@ -29,13 +29,10 @@ IMAGE INPUT
 -----------
 Accepted image types: any PIL-compatible raster file
 Color depth: handled as 16-bit RGB internally
-Color space:
-    • "srgb"      (default)
-    • "adobergb"
+
 
 Parameter: --image / -i
 Provides the path to the patch-grid image.
-
 --------------------------------------------------------------------------------
 GRID GEOMETRY
 -------------
@@ -56,9 +53,9 @@ Range:     0 < f ≤ 0.6
 Defines the fraction of the *smaller* patch dimension used for sampling.
 
 Sampling modes:
+    • "mad" (default)
     • "mean"
     • "median"
-    • "mad" (default)
 
 The sampling area is square and centered within each patch.
 
@@ -88,7 +85,7 @@ Valid range:  0.0 – 100.0
 
 Color conversions (XYZ, Lab) are computed through ArgyllCMS xicclu using the chosen
 source color space profile. Absolute colorimetric intent with D50 illuminant is used,
-same as how ArgyllCMS targen creates patch colors.
+same as how ArgyllCMS targen creates patch colors, and expected by printtarg and chartread.
 
 Ranges:
     XYZ_X, XYZ_Y, XYZ_Z:  unbounded positive; typical printed values 0–100
@@ -193,7 +190,9 @@ COMMAND-LINE ARGUMENTS
 ================================================================================
 --image / -i                    Path to input image containing colour patch grid.
                                 Input image must be an image target made for printing.
---image_icc_profile             Input image colour icc/icm profile file path.
+--pre_cond_profile              ICC/ICM profile file path, used as device pre-conditioning profile. Default: 'sRGB.icm'.
+                                This adapts/shapes the XYZ and LAB values to a known device/printer profile
+                                or color space profile. This also affects the approx. white point value.
 --patch_first_xy                "X,Y" coordinates (floats or ints) of the ***centre***
                                 of the first patch (top-left patch). Origin is top-left of the image.
 --patch_last_xy                 "X,Y" coordinates (floats or ints) of the ***centre*** of the last patch (bottom-right patch).
@@ -241,13 +240,13 @@ COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
   * Numeric precision: six decimal places.
 
 - Lab in output:
-  * CIE L*a*b* (1976), computed using **D65** reference white (Xn, Yn, Zn)
+  * CIE L*a*b* (1976), computed using **D50** reference white (Xn, Yn, Zn)
   * L in range ~0..100, a and b around typical -128..128 ranges.
   * Numeric precision: six decimal places.
 
 - All colorimetric output is **D50** and **linear** (no gamma applied in XYZ or Lab).
   The conversion pipeline in this script applies conversions according to
-  the selected `--image_icc_profile` using ArgyllCMS xicclu.
+  the selected `--pre_cond_profile` using ArgyllCMS xicclu.
 
 ================================================================================
 NOTES ON ACCURACY
@@ -468,6 +467,38 @@ DEBUG_SAMPLE_COUNTER = 0
 DEFAULT_SAMPLE_FRACTION = 0.50
 EPS = (6.0 / 29.0) ** 3   # Threshold for linearization in Lab
 K = 24389.0 / 27.0        # Linear coefficient in Lab conversion
+
+# Match ANY float (scientific, signed, etc.)
+FLOAT_RE = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+
+# Match 3 consecutive floats
+TRIPLE_RE = re.compile(rf"({FLOAT_RE}\s+{FLOAT_RE}\s+{FLOAT_RE})")
+
+# ------------------------------------------------
+# RGB lists (0..100, as floats)
+# ------------------------------------------------
+density_extr_val_list = [
+    (0.00000, 49.99527, 43.75000),
+    (0.00000, 50.00123, 50.00000),
+    (0.00000, 40.08532, 59.90998),
+    (0.00000, 0.00000, 78.36374),
+    (30.55980, 50.01120, 0.00000),
+    (0.00000, 32.57137, 0.00000),
+    (100.0000, 0.00000, 0.00000),
+    (0.00000, 0.00000, 21.87299),
+]
+
+device_combi_val_list = [
+    (100.0000, 100.0000, 100.0000),
+    (0.00000, 100.0000, 100.0000),
+    (100.0000, 0.00000, 100.0000),
+    (0.00000, 0.00000, 100.0000),
+    (100.0000, 100.0000, 0.00000),
+    (0.00000, 100.0000, 0.00000),
+    (100.0000, 0.00000, 0.00000),
+    (0.00000, 0.00000, 0.00000),
+    (50.00000, 50.00000, 50.00000),
+]
 
 # ---------- Utilities ----------
 # Create a formatted timestamp string suitable for TI files (CTI1/CTI2).
@@ -715,6 +746,57 @@ def rgb16_to_argyll_percent(rgb16: Sequence[float]) -> Tuple[float, float, float
     return float(rgb16[0] * factor), float(rgb16[1] * factor), float(rgb16[2] * factor)
 
 
+def parse_xicclu_output(text: str):
+    """
+    Bulletproof parser for xicclu output.
+
+    Strategy:
+      • For each non-empty line:
+          - Find *all* float-triplets in the line
+          - Use the LAST triplet (this is always XYZ or LAB)
+      • Return list of 3-tuples of floats
+
+    If debug=True, prints how each line is parsed.
+    """
+
+    results = []
+
+    if DEBUG:
+        print(f"\n\nConfirming filtering of output from xicclu in parse_xicclu_output:")
+
+    for line in text.splitlines():
+        raw_line = line.rstrip("\n")
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        # Find ALL 3-float sequences
+        triples = TRIPLE_RE.findall(line)
+
+        if not triples:
+            if DEBUG:
+                print(f"[SKIP] No triples found in line: '{raw_line}'")
+            continue
+
+        # Use LAST triple
+        trip = triples[-1]
+
+        parts = trip.split()
+        if len(parts) != 3:
+            if DEBUG:
+                print(f"[SKIP] Invalid triple: '{trip}' in line: '{raw_line}'")
+            continue
+
+        tup = tuple(map(float, parts))
+        results.append(tup)
+
+        if DEBUG:
+            print(f"[OK] {tup}  ← from: '{raw_line}'")
+
+    return results
+
+
 def convert_color_batch(rgb_percent_list, icc_profile_path):
     """
     Batch-convert a list of RGB percentages into XYZ and Lab using xicclu,
@@ -742,45 +824,35 @@ def convert_color_batch(rgb_percent_list, icc_profile_path):
     ).stdout
 
     # ------------------------------------------------
-    # Run xicclu for Lab
+    # Run xicclu for Lab (use -i a = absolute colorimetric intent with D50, same as targen does)
     # ------------------------------------------------
-    cmd_lab = ["xicclu", "-ff", "-ir", "-s100", "-pl", icc_profile_path]
+    cmd_lab = ["xicclu", "-ff", "-ia", "-s100", "-pl", icc_profile_path]
     out_lab = subprocess.run(
         cmd_lab, input=xicclu_input, capture_output=True, text=True
     ).stdout
 
-    # ------------------------------------------------
     # Parse XYZ
-    # ------------------------------------------------
-    xyz_list = []
-    for line in out_xyz.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        line = line.replace("[RGB]", "").replace("[XYZ]", "") \
-                   .replace("->", "").replace("MatrixFwd", "")
-        parts = line.split()
-        if len(parts) >= 3:
-            xyz_list.append(tuple(map(float, parts[-3:])))
-
-    # ------------------------------------------------
+    xyz_list = parse_xicclu_output(out_xyz)
     # Parse Lab
-    # ------------------------------------------------
-    lab_list = []
-    for line in out_lab.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        line = line.replace("[RGB]", "").replace("[LAB]", "").replace("[Lab]", "") \
-                   .replace("->", "").replace("MatrixFwd", "")
-        parts = line.split()
-        if len(parts) >= 3:
-            lab_list.append(tuple(map(float, parts[-3:])))
+    lab_list = parse_xicclu_output(out_lab)
 
     if len(xyz_list) != len(rgb_percent_list) or len(lab_list) != len(rgb_percent_list):
         raise ValueError("Parsed xicclu batch results do not match input count.")
 
     return xyz_list, lab_list
+
+
+def build_patch_records(rgb_percent_list, icc_profile_path):
+    """
+    Convenience: return a list of per-patch records:
+        (index, (R,G,B), (X,Y,Z), (L,a,b))
+    """
+    xyz_list, lab_list = convert_color_batch(rgb_percent_list, icc_profile_path)
+
+    records = []
+    for idx, (rgb, xyz, lab) in enumerate(zip(rgb_percent_list, xyz_list, lab_list)):
+        records.append((idx, rgb, xyz, lab))
+    return records
 
 
 # ---------- Main Processing Data Classes ----------
@@ -950,7 +1022,7 @@ def sample_patch(img16: np.ndarray, cx: float, cy: float, half: int, sample_mode
 #   row_pad           : optional int, whether row labels should be zero-padded
 #   col_pad           : optional int, whether column labels should be zero-padded
 #   patch_label_order : 'col_then_row' or 'row_then_col', determines label composition
-#   image_icc_profile : string, color space icc profile file patch
+#   pre_cond_profile : string, color space icc profile file patch
 #   sample_mode       : 'mean' or 'median', aggregation method for patch sampling
 #   output_order      : 'row_major' or 'column_major', controls traversal order
 #   mirror_output     : bool, if True reverses order of patches per row (row-major) or per column (column-major)
@@ -968,7 +1040,7 @@ def extract_patch_data(
     row_pad: Optional[int],
     col_pad: Optional[int],
     patch_label_order: str,
-    image_icc_profile: str,
+    pre_cond_profile: str,
     sample_mode: str,
     output_order: str,
     mirror_output: bool,
@@ -1049,7 +1121,7 @@ def extract_patch_data(
             # After building patches, reshape into 2D grid
             patch_grid = np.array(patches, dtype=object).reshape((geometry.num_rows, geometry.num_cols))
             # Apply rotation
-            k = rotate_grid // 90  # np.rot90 rotates counter-clockwise
+            k = rotate_grid // 90  # np.rot90 rotates clockwise
             patch_grid = np.rot90(patch_grid, k=k)
             # Flatten back to list in row-major order
             patches = patch_grid.flatten().tolist()
@@ -1151,7 +1223,7 @@ def extract_patch_data(
     # ------------------------------------------------------
     # FINAL STEP: batch-convert all RGB% values using xicclu
     # ------------------------------------------------------
-    xyz_list, lab_list = convert_color_batch(rgb_percent_list, image_icc_profile)
+    xyz_list, lab_list = convert_color_batch(rgb_percent_list, pre_cond_profile)
 
     if len(xyz_list) != len(patches):
         raise RuntimeError("XYZ/Lab list size mismatch with patches.")
@@ -1189,44 +1261,80 @@ def extract_patch_data(
     return patches, white_point_xyz, black_point_xyz
 
 
-def resolve_icc_profile_path(profile_arg: str) -> str:
+def resolve_icc_profile_path(profile_arg: str, arg_name: str) -> str:
     """
     Resolve and validate ICC/ICM profile path.
-    - Accepts either a filename (e.g., 'sRGB.icm') or a full path.
-    - If only filename is given, looks in the script directory.
+
+    Behavior:
+    - If the user did NOT specify the argument at all → return sRGB.icm (use fallback).
+    - If the user specified the flag but DID NOT provide a value → python argument error.
+    - If they provided a value → validate it.
     - Ensures file exists on Windows, macOS, Linux.
     - Users can pass, or similar:
-        '--image_icc_profile sRGB.icm'
+        '--image_icc_profile sRGB.icm' (current folder)
         '--image_icc_profile /System/Library/ColorSync/Profiles/sRGB Profile.icc'
         '--image_icc_profile ./profiles/AdobeRGB1998.icc'
+        '--image_icc_profile ../Color/MyProfile.icc' (one folder level up)
         '--image_icc_profile C:/Color/MyProfile.icm'
         '--image_icc_profile /usr/share/color/icc/DisplayP3.icc'
-    Returns:
-        Absolute validated path.
 
-    Raises:
-        FileNotFoundError with user-friendly message if not found.
+    profile_arg : string provided to --pre_cond_profile
+    arg_name    : the argument name for error messages
+
+    Returns absolute validated path.
+    Raises FileNotFoundError if missing or unreadable.
     """
 
-    # 1) Determine folder where this script is located
-    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 2) If user provided a full/relative path, check it directly
+    # --------------------------------------------------
+    # CASE 1: Argument not provided → use fallback
+    # --------------------------------------------------
+    if profile_arg is None:
+        return "sRGB.icm"
+
+    # --------------------------------------------------
+    # CASE 2: Argument provided but empty → ERROR
+    # Example: --pre_cond_profile ""  or   --pre_cond_profile <space>
+    # --------------------------------------------------
+    if profile_arg.strip() == "":
+        raise FileNotFoundError(
+            f"Error: argument '{arg_name}' was provided but no file path was given."
+        )
+
+    profile_arg = profile_arg.strip()
+
+    # Determine folder where script is located
+    script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+    # --------------------------------------------------
+    # CASE 3: Path-like input → check directly
+    # --------------------------------------------------
     if os.path.sep in profile_arg or profile_arg.startswith("."):
         candidate = os.path.abspath(profile_arg)
         if os.path.isfile(candidate):
             return candidate
-    else:
-        # 3) No path in input → look in the script directory
-        candidate = os.path.join(script_dir, profile_arg)
-        if os.path.isfile(candidate):
-            return os.path.abspath(candidate)
+        else:
+            raise FileNotFoundError(
+                f"Error: ICC/ICM profile provided to '{arg_name}' not found:\n"
+                f"  {profile_arg}\n"
+                f"Please provide a valid existing file path."
+            )
 
-    # 4) Not found → error message
+
+    # --------------------------------------------------
+    # CASE 4: Bare filename → search script folder
+    # --------------------------------------------------
+    candidate = os.path.join(script_dir, profile_arg)
+    if os.path.isfile(candidate):
+        return os.path.abspath(candidate)
+
     raise FileNotFoundError(
-        f"Error: provided ICC/ICM profile '{profile_arg}' for argument '--image_icc_profile' "
-        f"not found. Please provide a correct file path. For simplicity the ICC/ICM profile "
-        f"can be copied to the folder location of this script."
+        f"Error: ICC/ICM profile '{profile_arg}' for '{arg_name}' was not found.\n"
+        f"Search attempted:\n"
+        f"  - Provided path: {profile_arg}\n"
+        f"  - Script folder: {script_dir}\n"
+        f"Please provide a correct file path.\n"
+        f"For simplicity the ICC/ICM profile can be copied to the folder location of this script."
     )
 
 
@@ -1254,7 +1362,9 @@ class PatchFileWriter:
         num_rows: int,
         num_cols: int,
         row_labels: List[str],
-        col_labels: List[str]
+        col_labels: List[str],
+        density_extreme_records=None,
+        device_combination_records=None
     ):
         self.filename = filename
         self.patches = patches
@@ -1265,6 +1375,8 @@ class PatchFileWriter:
         self.num_cols = num_cols
         self.row_labels = row_labels
         self.col_labels = col_labels
+        self.density_extreme_records = density_extreme_records or []
+        self.device_combination_records = device_combination_records or []
 
     def write(self):
         raise NotImplementedError("Subclasses must implement write()")
@@ -1316,50 +1428,56 @@ class TI1Writer(PatchFileWriter):
                     elif blk == 'XYZ':
                         row_vals += [f"{float(v):.6f}" for v in p.xyz100]
                 fh.write(" ".join(row_vals) + "\n")
-            fh.write('END_DATA\n')
+            fh.write('END_DATA\n\n')
 
-
+            # =========================================
+            # Dynamic DENSITY_EXTREME_VALUES block
+            # =========================================
             fh.write("CTI1\n\n")
             fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
             fh.write('ORIGINATOR "Argyll targen"\n')
-            fh.write('DENSITY_EXTREME_VALUES "8"\n')
+            fh.write(f'DENSITY_EXTREME_VALUES "{len(self.density_extreme_records)}"\n')
             fh.write(f'CREATED "{created_ts}"\n\n')
+            # INDEX + RGB(3) + XYZ(3) = 7 fields
             fh.write('NUMBER_OF_FIELDS "7"\n')
             fh.write('BEGIN_DATA_FORMAT\n')
             fh.write("INDEX RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z\n")
             fh.write("END_DATA_FORMAT\n\n")
-            fh.write('NUMBER_OF_SETS "8"\n')
+            fh.write(f'NUMBER_OF_SETS "{len(self.density_extreme_records)}"\n')
             fh.write('BEGIN_DATA\n')
-            fh.write("0 0.00000 49.99527 43.75000 9.333898 12.12691 15.35996\n")
-            fh.write("1 0.00000 50.00123 50.00000 9.282530 11.93912 15.71923\n")
-            fh.write("2 0.00000 40.08532 59.90998 9.652263 11.23035 20.85225\n")
-            fh.write("3 0.00000 0.00000 78.36374 6.278528 5.962001 12.87821\n")
-            fh.write("4 30.55980 50.01120 0.00000 14.44452 18.46006 7.172505\n")
-            fh.write("5 0.00000 32.57137 0.00000 5.299583 7.184013 4.303697\n")
-            fh.write("6 100.0000 0.00000 0.00000 35.19251 20.43654 4.643321\n")
-            fh.write("7 0.00000 0.00000 21.87299 3.801583 3.909116 4.506199\n")
-            fh.write('END_DATA\n')
+            for idx, rgb, xyz, lab in self.density_extreme_records:
+                R, G, B = rgb
+                X, Y, Z = xyz
+                fh.write(
+                    f"{idx} "
+                    f"{R:.6f} {G:.6f} {B:.6f} "
+                    f"{X:.6f} {Y:.6f} {Z:.6f}\n"
+                )
+            fh.write('END_DATA\n\n')
 
+            # =========================================
+            # Dynamic DEVICE_COMBINATION_VALUES block
+            # =========================================
             fh.write("CTI1\n\n")
             fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
             fh.write('ORIGINATOR "Argyll targen"\n')
-            fh.write('DEVICE_COMBINATION_VALUES "9"\n')
+            fh.write(f'DEVICE_COMBINATION_VALUES "{len(self.device_combination_records)}"\n')
             fh.write(f'CREATED "{created_ts}"\n\n')
+            # INDEX + RGB(3) + XYZ(3) = 7 fields
             fh.write('NUMBER_OF_FIELDS "7"\n')
             fh.write('BEGIN_DATA_FORMAT\n')
             fh.write("INDEX RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z\n")
             fh.write("END_DATA_FORMAT\n\n")
-            fh.write('NUMBER_OF_SETS "9"\n')
+            fh.write(f'NUMBER_OF_SETS "{len(self.device_combination_records)}"\n')
             fh.write('BEGIN_DATA\n')
-            fh.write("0 100.0000 100.0000 100.0000 92.38129 96.32111 81.69708\n")
-            fh.write("1 0.00000 100.0000 100.0000 29.15368 33.35974 49.04946\n")
-            fh.write("2 100.0000 0.00000 100.0000 36.32309 22.82926 20.84792\n")
-            fh.write("3 0.00000 0.00000 100.0000 6.999917 6.572461 14.97645\n")
-            fh.write("4 100.0000 100.0000 0.00000 75.23812 85.69790 15.35314\n")
-            fh.write("5 0.00000 100.0000 0.00000 16.87349 25.12038 10.16533\n")
-            fh.write("6 100.0000 0.00000 0.00000 35.19251 20.43654 4.643321\n")
-            fh.write("7 0.00000 0.00000 0.00000 4.312931 5.032890 3.693281\n")
-            fh.write("8 50.00000 50.00000 50.00000 24.83442 26.40655 22.95545\n")
+            for idx, rgb, xyz, lab in self.device_combination_records:
+                R, G, B = rgb
+                X, Y, Z = xyz
+                fh.write(
+                    f"{idx} "
+                    f"{R:.6f} {G:.6f} {B:.6f} "
+                    f"{X:.6f} {Y:.6f} {Z:.6f}\n"
+                )
             fh.write('END_DATA\n')
 
 class TI2Writer(PatchFileWriter):
@@ -1471,6 +1589,32 @@ class CSVWriter(PatchFileWriter):
 # Input: args (argparse.Namespace) with all CLI flags.
 # Behavior: validates labels, computes geometry, samples patches, converts colours, writes outputs.
 def process_image_to_files(args):
+    # --- Validate image path early ---
+    if not args.image or not isinstance(args.image, str):
+        print("Error: --image path not provided.")
+        sys.exit(1)
+
+    # Normalize (handles Windows/macOS/Linux)
+    img_path = os.path.abspath(os.path.expanduser(args.image))
+
+    # Basic extension check (optional but helpful)
+    valid_exts = {".tif", ".tiff", ".jpg", ".jpeg", ".png", ".bmp"}
+    ext = os.path.splitext(img_path)[1].lower()
+
+    if ext not in valid_exts:
+        print(f"Warning: Image file extension '{ext}' is uncommon or unsupported.")
+        print("Supported extensions include:", ", ".join(sorted(valid_exts)))
+        # Not fatal—continue.
+
+    # Now check file existence
+    if not os.path.isfile(img_path):
+        print("Error: Image file does not exist:")
+        print("  ", img_path)
+        sys.exit(1)
+
+    # Overwrite args.image with resolved absolute path
+    args.image = img_path
+
     # Parse and validate label ranges
     row_labels, row_pad = parse_label_range(args.row_labels)
     col_labels, col_pad = parse_label_range(args.col_labels)
@@ -1490,7 +1634,11 @@ def process_image_to_files(args):
 
     # Load image and compute geometry
     img16, _ = load_image_as_16bit_rgb(args.image)
-    image_icc_profile = args.image_icc_profile.lower() if args.image_icc_profile else 'sRGB.icm'
+    pre_cond_profile = args.pre_cond_profile
+    #only do if pre_cond_profile exists
+    if pre_cond_profile:
+        pre_cond_profile = pre_cond_profile.lower()
+
     geometry = compute_grid_geometry(args)
 
     # Extract measurements
@@ -1502,11 +1650,22 @@ def process_image_to_files(args):
         row_pad,
         col_pad,
         args.patch_label_order,
-        image_icc_profile,
+        pre_cond_profile,
         args.sample_mode,
         args.output_order,
         args.mirror_output,
         args.rotate_grid
+    )
+
+    # Build data for Density Extreme Values in TI1 file
+    density_extreme_records = build_patch_records(
+        density_extr_val_list,
+        pre_cond_profile
+    )
+    # Build data for Device Combination Values in TI1 file
+    device_combination_records = build_patch_records(
+        device_combi_val_list,
+        pre_cond_profile
     )
 
     base_out = os.path.splitext(os.path.basename(args.image))[0]
@@ -1530,7 +1689,9 @@ def process_image_to_files(args):
             args.num_rows,
             args.num_cols,
             row_labels,
-            col_labels
+            col_labels,
+            density_extreme_records=density_extreme_records,
+            device_combination_records=device_combination_records
         )
         writer.write()
         print("Wrote:", fname)
@@ -1543,8 +1704,8 @@ def process_image_to_files(args):
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Read patch colours from grid image with label metadata.")
     p.add_argument('--image', '-i', required=True, help='Image file path')
-    p.add_argument('--image_icc_profile', default='sRGB.icm',
-                   help='Input image colour icc/icm profile file path (default: sRGB.icm)')
+    p.add_argument('--pre_cond_profile', default="sRGB.icm",
+                   help='ICC/ICM profile file path, used as device pre-conditioning profile.')
     p.add_argument('--patch_first_xy', required=True, type=parse_xy,
                    help='X,Y of first patch (top-left)')
     p.add_argument('--patch_last_xy', required=True, type=parse_xy,
@@ -1597,7 +1758,7 @@ def main():
     # Validate ICC/ICM profile
     # --------------------------
     try:
-        args.image_icc_profile = resolve_icc_profile_path(args.image_icc_profile)
+        args.pre_cond_profile = resolve_icc_profile_path(args.pre_cond_profile,"--pre_cond_profile")
     except FileNotFoundError as e:
         print(str(e))
         sys.exit(1)
