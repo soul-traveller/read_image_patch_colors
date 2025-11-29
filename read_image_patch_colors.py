@@ -1284,8 +1284,6 @@ def resolve_icc_profile_path(profile_arg: str, arg_name: str) -> str:
     Returns absolute validated path.
     Raises FileNotFoundError if missing or unreadable.
     """
-
-
     # --------------------------------------------------
     # CASE 1: Argument not provided → use fallback
     # --------------------------------------------------
@@ -1320,7 +1318,6 @@ def resolve_icc_profile_path(profile_arg: str, arg_name: str) -> str:
                 f"Please provide a valid existing file path."
             )
 
-
     # --------------------------------------------------
     # CASE 4: Bare filename → search script folder
     # --------------------------------------------------
@@ -1336,6 +1333,31 @@ def resolve_icc_profile_path(profile_arg: str, arg_name: str) -> str:
         f"Please provide a correct file path.\n"
         f"For simplicity the ICC/ICM profile can be copied to the folder location of this script."
     )
+
+
+def resolve_output_paths(args, image_basename):
+    """
+    Resolve and validate --output argument.
+    Returns (out_dir, out_base) where:
+      - out_dir: absolute directory path (will be created later)
+      - out_base: base filename without extension
+    Raises SystemExit on error.
+    """
+    if not args.output:
+        return os.getcwd(), image_basename
+
+    out_path = os.path.abspath(os.path.expanduser(args.output))
+
+    if os.path.isdir(out_path):
+        return out_path, image_basename
+    elif not os.path.exists(out_path) and args.output.endswith(os.sep):
+        print(f"Error: Directory '{out_path}' does not exist.")
+        sys.exit(1)
+    else:
+        # File path prefix
+        out_dir = os.path.dirname(out_path) or os.getcwd()
+        out_base = os.path.splitext(os.path.basename(out_path))[0]
+        return out_dir, out_base
 
 
 # -------- File Writers --------
@@ -1632,6 +1654,10 @@ def process_image_to_files(args):
                 f"Invalid output_color_space token '{tok}'. At least one of RGB, XYZ, LAB is required"
             )
 
+    # Resolve and validate output paths early
+    base_out = os.path.splitext(os.path.basename(args.image))[0]
+    out_dir, out_base = resolve_output_paths(args, base_out)
+
     # Load image and compute geometry
     img16, _ = load_image_as_16bit_rgb(args.image)
     pre_cond_profile = args.pre_cond_profile
@@ -1668,11 +1694,9 @@ def process_image_to_files(args):
         pre_cond_profile
     )
 
-    base_out = os.path.splitext(os.path.basename(args.image))[0]
-
-    ti1_file = args.output if args.output else f"{base_out}.ti1"
-    ti2_file = args.output if args.output else f"{base_out}.ti2"
-    csv_file = f"{base_out}.csv"
+    ti1_file = os.path.join(out_dir, f"{out_base}.ti1")
+    ti2_file = os.path.join(out_dir, f"{out_base}.ti2")
+    csv_file = os.path.join(out_dir, f"{out_base}.csv")
 
     # Instantiate and write each requested file type using common writer interface
     for writer_cls, fname in [

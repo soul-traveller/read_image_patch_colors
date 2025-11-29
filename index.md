@@ -140,7 +140,16 @@ One example of generating an ArgyllCMS printtarg target for SpyderPrint High Qua
     </tr>
     <tr>
       <td><code>--output</code></td>
-      <td>Base filename for generated <code>.ti1</code>, <code>.ti2</code>, and <code>.csv</code> output files.<br>If omitted, filenames are based on the input image name.</td>
+      <td>Base filename and/or path for generated <code>.ti1</code>, <code>.ti2</code>, and <code>.csv</code> output files.<br>If omitted, filenames are based on the input image name and placed in the same folder as the script. If path is specified, the script will place all output files. If the specified path also includes a filename, the script will use that filename for all output files.<br><br>
+      • Specify only directory, current folder is reference (keep input image name):<br>
+         <div style="margin-left: 20px;">--output "./Outputfolder/"</div>
+      • Specify directory and filename, current folder is reference (override input image name):<br>
+         <div style="margin-left: 20px;">--output "./Outputfolder/Outputfilename"</div>
+      • Specify directory and filename (override input image name):<br>
+         <div style="margin-left: 20px;">--output "User/Username/Outputfolder/Outputfilename"</div>
+      • Specify directory in a prallel folder, one up in structure (keep input image name):<br>
+         <div style="margin-left: 20px;">--output "../Outputfolder/"</div>
+         </td>
     </tr>
     <tr>
       <td><code>--debug</code></td>
