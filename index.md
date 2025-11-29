@@ -212,7 +212,7 @@ Sampled RGB → RGB percentage (0–100):
 `RGB_percent = (R_16bit / 65535) * 100`
 
 Conversions use ArgyllCMS xicclu with selected color icc profile (default “sRGB.icm”).
-Absolute colorimetric intent with D50 illuminant is used, same as how ArgyllCMS targen creates patch colors.
+Absolute colorimetric intent with D50 illuminant is used, same as how ArgyllCMS targen creates patch colors. Note that Absolute colorimetric D50 is almost identical to Relative colorimetric D65.
 
 The patch with the highest XYZ_Y is stored as `APPROX_WHITE_POINT`.
 
