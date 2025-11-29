@@ -1360,6 +1360,77 @@ def resolve_output_paths(args, image_basename):
         return out_dir, out_base
 
 
+def Count_White(patches, white_point_xyz):
+    """Count patches that are white (within tolerance of white point)."""
+    if white_point_xyz is None:
+        return 0
+    
+    tolerance = 0.001  # 0.001% tolerance for white detection
+    white_count = 0
+    
+    for p in patches:
+        if p.xyz100[1] is not None and abs(p.xyz100[1] - white_point_xyz[1]) <= tolerance:
+            white_count += 1
+    
+    return white_count
+
+
+def Count_Black(patches, black_point_xyz):
+    """Count patches that are black (within tolerance of black point)."""
+    if black_point_xyz is None:
+        return 0
+    
+    tolerance = 0.001  # 0.001% tolerance for black detection
+    black_count = 0
+    
+    for p in patches:
+        if p.xyz100[1] is not None and abs(p.xyz100[1] - black_point_xyz[1]) <= tolerance:
+            black_count += 1
+    
+    return black_count
+
+
+def CountNeutral(patches):
+    """Count neutral/gray patches using RGB balance as primary method."""
+    neutral_count = 0
+    rgb_tolerance = 0.1  # Very tight RGB tolerance for balance
+    min_lightness = 3.0   # Minimum RGB value for gray (above black)
+    max_lightness = 97.0  # Maximum RGB value for gray (below white)
+    
+    for p in patches:
+        is_neutral = False
+        
+        # Primary method: Check RGB balance (R=G=B within tolerance)
+        if p.rgb_percent:
+            r, g, b = p.rgb_percent
+            
+            # Check if all RGB channels are balanced
+            if (abs(r - g) <= rgb_tolerance and 
+                abs(r - b) <= rgb_tolerance and 
+                abs(g - b) <= rgb_tolerance):
+                # Also ensure it's not pure black or white
+                if min_lightness <= r <= max_lightness:
+                    is_neutral = True
+        
+        # Fallback method: Check Lab values if RGB method didn't work
+        if not is_neutral and (p.lab[0] is not None and 
+                              p.lab[1] is not None and 
+                              p.lab[2] is not None):
+            lab_tolerance = 0.5
+            min_lab_lightness = 5.0
+            max_lab_lightness = 95.0
+            
+            if (abs(p.lab[1]) <= lab_tolerance and 
+                abs(p.lab[2]) <= lab_tolerance and
+                min_lab_lightness <= p.lab[0] <= max_lab_lightness):
+                is_neutral = True
+        
+        if is_neutral:
+            neutral_count += 1
+    
+    return neutral_count
+
+
 # -------- File Writers --------
 class PatchFileWriter:
     """Abstract base class for writers that emit patch measurements to files.
@@ -1428,7 +1499,15 @@ class TI1Writer(PatchFileWriter):
             else:
                 fh.write('APPROX_WHITE_POINT "0.000000 0.000000 0.000000"\n')
 
-            fh.write('COLOR_REP "iRGB"\n\n')
+            fh.write('COLOR_REP "iRGB"\n')
+
+            # Add white, black, and neutral patch counts
+            white_count = Count_White(self.patches, self.white_point_xyz)
+            black_count = Count_Black(self.patches, self.black_point_xyz)
+            neutral_count = CountNeutral(self.patches)
+            fh.write(f'WHITE_COLOR_PATCHES "{white_count}"\n')
+            fh.write(f'BLACK_COLOR_PATCHES "{black_count}"\n')
+            fh.write(f'NEUTRAL_STEPS "{neutral_count}"\n\n')
 
             # Build headers according to requested column blocks
             headers = ["SAMPLE_ID"]
@@ -1501,6 +1580,7 @@ class TI1Writer(PatchFileWriter):
                     f"{X:.6f} {Y:.6f} {Z:.6f}\n"
                 )
             fh.write('END_DATA\n')
+
 
 class TI2Writer(PatchFileWriter):
     """Write Argyll .ti2 file.
