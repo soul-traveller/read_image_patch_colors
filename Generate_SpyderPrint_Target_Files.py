@@ -1,8 +1,129 @@
 #!/usr/bin/env python3
 """
-Cross-platform script to process SpyderPrint target images.
-Generates and executes read_image_patch_colors.py commands for each target configuration.
+Generate_SpyderPrint_Target_Files.py
+Version: 1.0
+Author: Knut Larsson
+
+================================================================================
+OVERVIEW
+--------
+This script automates the generation of ArgyllCMS compatible target files (.ti1, .ti2, .csv)
+from SpyderPrint target images. It runs read_image_patch_colors.py for each configured
+target with the appropriate parameters, eliminating the need to manually type commands
+for each image.
+
+The script handles:
+- Multiple target types and configurations
+- Cross-platform execution (Windows, macOS, Linux)
+- Proper path handling with spaces
+- Consistent Python interpreter usage
+- Batch processing of all configured targets
+
+================================================================================
+HOW TO USE
+-----------
+1. **Prerequisites:**
+   - Ensure read_image_patch_colors.py is in the same directory
+   - Install required packages: pip install numpy Pillow
+   - Install ArgyllCMS (xicclu must be in PATH)
+   - Place target images in "Example Targets Read/SpyderPrint Targets/"
+   - Place ICC profiles in "Profiles/" (optional, includes sRGB.icm by default)
+
+2. **Run the script:**
+   ```bash
+   python3 Generate_SpyderPrint_Target_Files.py
+   ```
+
+3. **Output:**
+   - .ti1, .ti2, and .csv files are generated in each target's folder
+   - Progress is displayed for each target being processed
+   - Errors are reported if any target fails to process
+
+================================================================================
+ADDING NEW TARGETS
+------------------
+To add new target configurations, modify the `configurations` list in the [main()](cci:1://file:///Users/knut/Documents/Calibration/Scripts/ArgyllCMS%20scripts/Published%20on%20Github/read_image_patch_colors/read_image_patch_colors/Generate_SpyderPrint_Target_Files.py:11:0-40:60) function:
+
+```
+python
+configurations = [
+    # Existing configurations...
+
+    # Add new target like this:
+    ("Target Name", "ImageFilename.tif",
+     "first_x,first_y", "last_x,last_y",
+     "ratio", "cols", "rows",
+     "row_labels", "col_labels"),
+]
+```
+
+**Configuration Parameters:**
+- Target Name: Descriptive name for the target (used in logging)
+- Image Filename: Name of the image file in the target folder
+- first_x,first_y: Center coordinates of top-left patch
+- last_x,last_y: Center coordinates of bottom-right patch
+- ratio: Width/Height ratio of individual patches
+- cols: Number of columns in the grid
+- rows: Number of rows in the grid
+- row_labels: Label range for rows (e.g., "1-15", "A-D")
+- col_labels: Label range for columns (e.g., "A-O", "1-12")
+
+**Steps to add a new target:**
+1. Place the target image in the appropriate folder
+2. Measure the patch grid parameters (first/last coordinates, ratio, dimensions)
+3. Determine the labeling scheme
+4. Add the configuration tuple to the configurations list
+5. Run the script to test the new configuration
+
+**Example: Adding a new 12x8 target:**
+```
+python
+("My Custom Target", "custom_12x8.tif",
+ "100,80", "500,400", "1.2", "12", "8", "1-8", "A-L"),
+```
+
+================================================================================
+FOLDER STRUCTURE
+----------------
+The script expects this folder structure:
+
+```
+read_image_patch_colors/
+├── Generate_SpyderPrint_Target_Files.py
+├── read_image_patch_colors.py
+├── Example Targets Read/
+│   └── SpyderPrint Targets/
+│       ├── Expert Target Page 1 of 3 (243-patches).tif
+│       ├── Expert Target (large)(729-patches).tif
+│       └── ... (other target images)
+├── Profiles/
+│   ├── sRGB.icm
+│   └── ... (other ICC profiles)
+└── Output/ (generated files appear in target folders)
+```
+
+================================================================================
+TROUBLESHOOTING
+---------------
+- **ModuleNotFoundError**: Ensure Pillow is installed and the same Python interpreter is used
+- **xicclu not found**: Install ArgyllCMS and ensure it's in your PATH
+- **File not found**: Check that target images exist in the expected folder
+- **Coordinate errors**: Verify patch_first_xy and patch_last_xy match the actual grid
+- **Label mismatches**: Ensure row_labels and col_labels match the grid dimensions
+
+Use the --debug flag in read_image_patch_colors.py to investigate patch sampling issues.
+
+================================================================================
+CUSTOMIZATION
+-------------
+- Modify the default output color space by changing the --output_color_space parameter
+- Adjust sampling mode by changing --sample_mode (mad, mean, median)
+- Change sample_fraction to modify the sampling area within each patch
+- Add additional ICC profiles to the Profiles folder and reference them in configurations
+
+================================================================================
 """
+
 
 import os
 import sys
