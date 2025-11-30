@@ -1,11 +1,13 @@
 # read\_image\_patch\_colors
 # Reference and Usage Guide
-**Version:** 1.4<br>
+**Version:** 1.5<br>
 **Author:** Knut Larsson<br>
 **Purpose:** Generate ArgyllCMS compatible `.ti1` and `.ti2` files from a grid of color patches in an image.
 
+
 ## Table of Contents
 - [Overview](#overview)
+- [Use Cases](#use-cases)
 - [Examples Included](#examples-included)
 - [Command-line Arguments](#command-line-arguments)
 - [Image Input](#image-input)
@@ -24,6 +26,7 @@
 - [Workflow Summary](#workflow-summary)
 - [Examples](#examples)
 
+
 # Overview
 This program extracts color values from a rectangular grid of color patches in an image, computes colorimetric values (RGB percentages, XYZ, Lab and approximate white point), applies row/column labeling rules, and writes three output files:
 
@@ -35,11 +38,22 @@ It supports sampling in mean or median mode, configurable patch geometry, numeri
 
 The script is designed for use in color-management workflows where printed color targets are scanned or photographed and converted into Argyll measurement files. Alternatively, convert original calibration target images to attain `.ti1`, `.ti2` and `.csv` files with their patch color data.
 
-Example use cases:
 
-1. Using the image of a reference target, create a `.ti1` file so thatn one may use ArgyllCMS `printtarg` command and generate a target using the colors of the image, which then can be used to create a printer profile.
+# Use Cases
+Example use cases for reading the image of a reference target:
 
-2. Using the image of a reference target, create a `.ti2` file so that one may print the target, scan it, and then use ArgyllCMS `scanin` command to create a printer profile.
+1. Create a `.ti1` file so that one may use ArgyllCMS `printtarg` command and generate a target using the colors of the image, which then can be used with ArgyllCMS `chartread` and `colprof` to create a printer profile.<br>
+	- Workflow:<br>
+Read image with script → input `.ti1` to `printtarg` → Print generated Target image without color management → input `.ti2` to `chartread` then read target paches with colorimeter → input `.ti3` to `colprof` → output profile.
+
+2. Create a `.ti2` file so that one may use ArgyllCMS `chartread`, and use a colorimeter to read the color values using the original SpyderPrint Targets, which then can be used with ArgyllCMS `colprof` to create a printer profile.
+	- Workflow:<br>
+Read image with script → Print original SpyderPrint Target image without color management → input `.ti2` to `chartread` then read target paches with colorimeter → input `.ti3` to `colprof` → output profile.
+
+3. Create a `.ti1` file so that one may use ArgyllCMS `fakeread` command using colors of the image, which then can be used with ArgyllCMS `colprof` to create a simulated profile.<br>
+	- Workflow:<br>
+Read image with script  → input `.ti1` to `fakeread` → input `.ti3` to `colprof` → output simulated profile.
+
 
 # Examples Included
 See chapter [Examples](#examples) for detailed examples on how to read patches from different size patch grid images. All examples are based on Datacolor SpyderPrint Targets, which are:
@@ -54,6 +68,7 @@ See chapter [Examples](#examples) for detailed examples on how to read patches f
 Target images used for creating .ti1, .ti2 and .csv files are under folder [Example Targets Read](https://github.com/soul-traveller/read_image_patch_colors/tree/main/Example%20Targets%20Read).
 
 Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Targets are also included.
+
 
 # Command-line Arguments
 <table>
@@ -75,7 +90,7 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
               Supported path formats:<br>
               - MyProfile.icm (current folder)<br>
               - /System/Library/ColorSync/Profiles/MyProfile.icc<br>
-              - ./profiles/AdobeRGB1998.icc<br>
+              - ./profiles/AdobeRGB1998.icc (Current folder is ref.)<br>
               - ../MyProfile.icc (one folder up)<br>
               - C:\Windows\MyProfile.icm<br>
               - C:/Color/MyProfile.icm<br>
@@ -87,7 +102,7 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
     </tr>
     <tr>
       <td><code>--patch_last_xy</code></td>
-      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the last patch</b> (bottom-right). Accepts integers or floats.</td>
+      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the last patch</b> (bottom-right). Accepts integers or floats.<br><b>Note:</b> In some cases some pathces on last row of image may not exist. In these cases to ccordinates to the last row and column, as if it would exist, must be provided. After generating of .ti1, .ti2 and .csv files the last patches must be manually removed, if output must be exact like original image. If patch_label_order is col_then_row then the patces to remove are in sequence at the end of the list, but if row_then_col is used, then you would need to search for the patch lables (SAMPLE_LOC) to locate them and remove them.</td>
     </tr>
     <tr>
       <td><code>--patch_width_height_ratio</code></td>
@@ -115,7 +130,9 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
     </tr>
     <tr>
       <td><code>--patch_label_order</code></td>
-      <td><b>(Required)</b> Determines patch label composition:<br>• <code>col_then_row</code> → e.g. <code>A12</code><br>• <code>row_then_col</code> → e.g. <code>12A</code></td>
+      <td><b>(Required)</b> Determines patch label composition:<br>
+      (Examples assume row_labels are numeric and col_labels are alphabetic)<br>
+      • <code>col_then_row</code> → e.g. <code>A12</code><br>• <code>row_then_col</code> → e.g. <code>12A</code></td>
     </tr>
     <tr>
       <td><code>--output_color_space</code></td>
@@ -157,12 +174,14 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
   </tbody>
 </table>
 
+
 # Image Input
 Accepted image types: any PIL-compatible raster file
 Color depth: handled as 16-bit RGB internally
 
 Parameter: `--image` / `-i`
 Provides the path to the patch-grid image.
+
 
 # Grid Geometry
 Geometry is computed from:
@@ -174,6 +193,7 @@ Geometry is computed from:
 - `--patch_width_height_ratio` — width/height of a patch
 
 The script calculates patch center coordinates and boundaries.
+
 
 # Sampling
 Parameter: `--sample_fraction`
@@ -187,6 +207,7 @@ Sampling modes (parameter `--sample_mode`):
 - median – pure median (very robust, but may bias bright/dark values)
 
 Sampling region is square, centered in each patch.
+
 
 # Labeling Rules
 Row and column labels come from:
@@ -206,39 +227,95 @@ Label order:
 
 Label counts must match grid dimensions exactly.
 
+
 # Color Processing
 Sampled RGB → RGB percentage (0–100):
 `RGB_percent = (R_16bit / 65535) * 100`
 
-Conversions use ArgyllCMS xicclu with selected color icc profile (default “sRGB.icm”).
-Absolute colorimetric intent with D50 illuminant is used, same as how ArgyllCMS targen creates patch colors. Note that Absolute colorimetric D50 is almost identical to Relative colorimetric D65.
-
-The patch with the highest XYZ_Y is stored as `APPROX_WHITE_POINT`.
+Color conversions (XYZ, Lab) are computed through ArgyllCMS xicclu command with 
+selected color icc profile (default `sRGB.icm`). Absolute colorimetric intent with D50 illuminant is used, same as how ArgyllCMS targen creates patch colors, and is expected by printtarg and chartread. Targen uses a sRGB-like model for generating XYZ and LAB D50, unless another profile i provided. This is why `sRGB.icm` color space profile is used by default, but may be overridden by choosing a different profile with `--pre_cond_profile`.
 
 XYZ output:
 
-- CIE 1931 2°
-- Absolute colorimetric intent adapted to D50
-- White scaled to Y=100
+- CIEXYZ (CIE 1931 2° standard observer)
+- D50 white reference (Profile Connection Space in ICC)
+- Absolute colorimetric intent
+- White scaled to Y=100, unbounded positive, values 0-100
+- Numeric precision: six decimal places.
 
 Lab output:
 
-- CIE Lab (1976)
-- D50 reference, Absolute colorimetric intent
+- CIE L* a* b* (1976), computed using **D50** reference white (Xn, Yn, Zn)
+- Absolute colorimetric intent
+- L in range ~0..100, a and b range typical -128..128.
+- Numeric precision: six decimal places.
+
+- All colorimetric output is **D50** and **linear** (no gamma applied in XYZ or Lab).
+
+The patch with the highest Y (XYZ_Y) is stored as APPROX\_WHITE\_POINT. 
+Note that XYZ Absolute colorimetric D50 is almost identical to XYZ Relative colorimetric D65, which can confuse some users to think that the APPROX\_WHITE\_POINT is computed using D65. This is not the case.
+
 
 # Output Files
 Three files:
 
 ### 1. TI1 (.ti1)
-Contains: header, APPROX\_WHITE\_POINT, COLOR_REP (iRGB), expected-values flag, fields, and patch data.
+Contains:
+
+    • Header (descriptor, originator, timestamp)
+    • COLOR_REP (always "iRGB")
+    • ACCURATE_EXPECTED_VALUES flag
+    • Data fields (SAMPLE_ID, RGB, optionally XYZ)
+    • Patch data in Argyll .ti1 format (SAMPLE_ID, RGB and optionally XYZ)
+    • Dynamically generated:
+        • APPROX_WHITE_POINT
+        • WHITE_COLOR_PATCHES
+        • BLACK_COLOR_PATCHES
+        • NEUTRAL_STEPS
+        • NUMBER_OF_FIELDS
+        • NUMBER_OF_SETS
+        • DENSITY_EXTREME_VALUES table
+        • DEVICE_COMBINATION_VALUES table
+
+NEUTRAL\_STEPS are estimated by reading patch colors using a two-tiered approach with RGB balance as the primary method and Lab values as a fallback.
+
+Primary Method: RGB Balance Check<br>
+
+- RGB Tolerance: 0.1%. Very tight tolerance requiring near-perfect R=G=B balance
+  - Lightness Range: 3.0% to 97.0%. Excludes pure black and white patches.
+  - Logic: A patch is neutral if all RGB channels are balanced within 0.1% and 
+    fall within the specified lightness range.
+- Fallback Method: Lab Color Space Check<br>
+  - Lab Tolerance: ±0.5 for a* and b* channels. Ensures near-zero chroma.
+  - Lab Lightness Range: 5.0 to 95.0. Slightly broader than RGB range.
+  - Logic: Used when RGB method fails. Checks if a* and b* are near zero with valid L* value.
+
+SINGLE\_DIM\_STEPS are estimated by reading single-dimension color ramps where two RGB channels remain static while the third creates a ramp pattern. A single-channel ramp is defined as a sequence where:<br>
+
+  - Two RGB channels remain constant (within tolerance)
+  - One RGB channel changes progressively (positive or negative direction)
+  - At least 3 patches are required to form a valid ramp
+  - Patches must be spatially adjacent (all horizontal OR all vertical)
 
 ### 2. TI2 (.ti2)
-Contains: header, APPROX\_WHITE\_POINT, strip/patch index patterns, STEPS\_IN\_PASS, PASSES\_IN\_STRIPS2, index order, and full color data including Lab.
+Contains:
 
-`SAMPLE_LOC` uses labels like “A1”, “D14”, etc.
+    • Header (descriptor, originator, timestamp)
+    • STRIP and PATCH index patterns inferred from row/col labels
+    • STEPS_IN_PASS     = num_rows
+    • PASSES_IN_STRIPS2 = num_cols
+    • Index order       = STRIP_THEN_PATCH
+    • Dynamically generated:
+        • APPROX_WHITE_POINT
+        • NUMBER_OF_FIELDS
+        • NUMBER_OF_SETS
+    • Complete patch data (SAMPLE_ID, SAMPLE_LOC, RGB, XYZ, Lab)
+
+SAMPLE\_LOC corresponds to labels such as "A1", "D14", "C07", etc.
 
 ### 3. CSV (.csv)
 Space-separated table with SAMPLE\_ID, SAMPLE\_LOC, and selected color values.
+
 
 # Patch Value Ranges
 RGB: 0–100<br>
@@ -248,13 +325,15 @@ Lab_a/b: approx. –128 to +128<br>
 
 All values have six decimal places.
 
+
 # Valid Color Blocks
 `--output_color_space` must include at least one of: RGB, XYZ, LAB
 
 Example:
-`--output_color_space RGB,XYZ,LAB`
+`--output_color_space RGB,XYZ`
 
 Order controls column order in TI1/TI2/CSV.
+
 
 # Dependencies
 - Python 3.8+
@@ -262,18 +341,34 @@ Order controls column order in TI1/TI2/CSV.
 - Pillow
 - ArgyllCMS xicclu
 
+
 # Notes on Accuracy
-- Uses 16-bit RGB internally.
-- 8-bit images get scaled (value × 257).
-- Color conversions use double precision.
-- XYZ scaled so Yn=100.
+- This script seeks to minimize rounding/quantization error:
+  * If the image has 16-bit/channel data it will be used directly.
+  * If the image is 8-bit/channel (most typical images), it will be scaled up
+    exactly to 16-bit (value * 257) before colour conversion to reduce rounding
+    / mapping error in conversions.
+  * Conversion from RGB -> XYZ -> Lab is done using ArgyllCMS xicclu with
+  precision floats; XYZ is scaled so Yn = 100 and written with 6 decimal places.
+
+- This script produces **colorimetrically correct** PCS values
+  for the image that was measured.
+
 
 # Patch Sampling Method
-1. Compute patch center via interpolation.
-2. Define sampling region size (min 3px, max 60% patch).
-3. Extract pixels.
-4. Average RGB in 16-bit domain.
-5. Convert using ArgyllCMS xicclu (RGB→XYZ D50 → Lab D50).
+For each patch:
+
+1. Patch centre (Cx, Cy) is computed by linear interpolation between
+   patch_first_xy → patch_last_xy across the grid.
+2. A square sampling region of size `sample_size × sample_size`
+   (odd number, min 3, max 60% of patch) is centred at (Cx, Cy).
+3. The script extracts all pixels inside this region.
+4. The sampled RGB values are averaged (MAD-based sigma) in 16-bit integer 
+	space (8-bit inputs are scaled to 16-bit via *257).
+5. Colour conversions are applied using xicclu:
+      - RGB -> CIEXYZ XYZ (D50) 
+      - RGB -> Lab (D50)
+
 
 # Output File Format (TI2)
 ```
@@ -310,17 +405,20 @@ Examples:
 - `RGB,XYZ` → RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z
 - `LAB` → LAB_L LAB_A LAB_B
 
+
 # Error Conditions
 Use `--debug` flag to investigate issues relating to color on patches.
 
 Script stops if:
 
 - Coordinates and Row/Column numbers cause measurement areas to be missaligned with patch centres of the target image.
-- Label mismatch
-- Invalid color tokens
-- sample_fraction invalid
+- Labels do not match row/column counts
+- Output color space tokens are invalid
+- sample_fraction exceeds allowed range
 - Grid geometry cannot be computed
-- File write error
+- Any I/O error occurs during file writing
+- File path to image, pre_cond_profile, or output directory is invalid
+
 
 # Workflow Summary
 1. Validate dependencies
@@ -333,6 +431,7 @@ Script stops if:
 8. Compute white/black points
 9. Generate metadata
 10. Write TI1/TI2/CSV
+
 
 # Examples
 ## 9×12 SpyderPrint target with numeric rows, alphabetic columns

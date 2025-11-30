@@ -17,12 +17,39 @@ white point), applies row/column labeling rules, and writes three output files:
     • ArgyllCMS .ti2 file
     • CSV file (space-separated)
 
-It supports sampling in mean, median or MAD-based sigma clipping mode, configurable patch geometry,
-numeric or alphabetic labeling patterns, and RGB/XYZ/Lab output combinations.
+It supports sampling in mean, median or MAD-based sigma clipping mode, configurable 
+patch geometry, numeric or alphabetic labeling patterns, and RGB/XYZ/Lab output 
+combinations.
 
-The script is designed for use in color-management workflows where printed color
-targets must be scanned or photographed and converted into Argyll measurement
-files.
+The script is designed for use in color-management workflows where printed color 
+targets are scanned or photographed and converted into Argyll measurement files. 
+Alternatively, convert original calibration target images to attain `.ti1`, `.ti2` 
+and `.csv` files with their patch color data.
+
+Example use cases, using the image of a reference target:
+
+1. Create a `.ti1` file so that one may use ArgyllCMS `printtarg` command and 
+   generate a target using the colors of the image, which then can be used with 
+   ArgyllCMS `chartread` and `colprof` to create a printer profile.
+	- Workflow:
+      Read image with script → input `.ti1` to `printtarg` → Print generated Target 
+      image without color management → input `.ti2` to `chartread` then read target 
+      paches with colorimeter → input `.ti3` to `colprof` → output profile.
+
+2. Create a `.ti2` file so that one may use ArgyllCMS `chartread`, and use a 
+   colorimeter to read the color values using the original SpyderPrint Targets, 
+   which then can be used with ArgyllCMS `colprof` to create a printer profile.
+	- Workflow:
+    Read image with script → Print original SpyderPrint Target image without color 
+    management → input `.ti2` to `chartread` then read target paches with colorimeter 
+    → input `.ti3` to `colprof` → output profile.
+
+3. Create a `.ti1` file so that one may use ArgyllCMS `fakeread` command using 
+   colors of the image, which then can be used with ArgyllCMS `colprof` to create 
+   a simulated profile.
+	- Workflow:
+    Read image with script → input `.ti1` to `fakeread` → input `.ti3` to `colprof` 
+    → output simulated profile.
 
 --------------------------------------------------------------------------------
 IMAGE INPUT
@@ -81,18 +108,37 @@ COLOR PROCESSING
 Each sampled RGB triplet is first normalized to percent:
     RGB_percent = (R_16bit / 65535) * 100
 
-Valid range:  0.0 – 100.0
+Valid range:  0.0 - 100.0
 
-Color conversions (XYZ, Lab) are computed through ArgyllCMS xicclu using the chosen
-source color space profile. Absolute colorimetric intent with D50 illuminant is used,
-same as how ArgyllCMS targen creates patch colors, and expected by printtarg and chartread.
+Color conversions (XYZ, Lab) are computed through ArgyllCMS xicclu command with 
+selected color icc profile (default `sRGB.icm`).
+Absolute colorimetric intent with D50 illuminant is used, same as how ArgyllCMS 
+targen creates patch colors, and is expected by printtarg and chartread. 
+Targen uses a sRGB-like model for generating XYZ and LAB D50, unless another 
+profile i provided. This is why `sRGB.icm` color space profile is used by default, 
+but may be overridden by choosing a different profile with `--pre_cond_profile`.
 
-Ranges:
-    XYZ_X, XYZ_Y, XYZ_Z:  unbounded positive; typical printed values 0–100
-    Lab_L:                0–100
-    Lab_a, Lab_b:         approx. -128 to +128
+XYZ output:
 
-The patch with the highest Y (XYZ_Y) is stored as APPROX_WHITE_POINT.
+- CIEXYZ (CIE 1931 2° standard observer)
+- D50 white reference (Profile Connection Space in ICC)
+- Absolute colorimetric intent
+- White scaled to Y=100, unbounded positive, values 0-100
+- Numeric precision: six decimal places.
+
+Lab output:
+
+- CIE L*a*b* (1976), computed using **D50** reference white (Xn, Yn, Zn)
+- Absolute colorimetric intent
+- L in range ~0..100, a and b range typical -128..128.
+- Numeric precision: six decimal places.
+
+- All colorimetric output is **D50** and **linear** (no gamma applied in XYZ or Lab).
+
+The patch with the highest Y (XYZ_Y) is stored as APPROX_WHITE_POINT. Note that XYZ 
+Absolute colorimetric D50 is almost identical to XYZ Relative colorimetric D65, 
+which can confuse some users to think that the APPROX_WHITE_POINT is computed 
+using D65. This is not the case.
 
 --------------------------------------------------------------------------------
 OUTPUT FILES
@@ -103,23 +149,55 @@ Three files are produced:
 ------------------
 Contains:
     • Header (descriptor, originator, timestamp)
-    • APPROX_WHITE_POINT
     • COLOR_REP (always "iRGB")
-    • Accurate expected values flag
+    • ACCURATE_EXPECTED_VALUES flag
     • Data fields (SAMPLE_ID, RGB, optionally XYZ)
-    • Patch data in Argyll .ti1 format
+    • Patch data in Argyll .ti1 format (SAMPLE_ID, RGB and optionally XYZ)
+    • Dynamically generated:
+        • APPROX_WHITE_POINT
+        • WHITE_COLOR_PATCHES
+        • BLACK_COLOR_PATCHES
+        • NEUTRAL_STEPS
+        • SINGLE_DIM_STEPS
+        • NUMBER_OF_FIELDS
+        • NUMBER_OF_SETS
+        • DENSITY_EXTREME_VALUES table
+        • DEVICE_COMBINATION_VALUES table
+
+NEUTRAL_STEPS are estimated by reading patch colors using a two-tiered approach 
+with RGB balance as the primary method and Lab values as a fallback.
+
+Primary Method: RGB Balance Check
+- RGB Tolerance: 0.1%. Very tight tolerance requiring near-perfect R=G=B balance
+  - Lightness Range: 3.0% to 97.0%. Excludes pure black and white patches.
+  - Logic: A patch is neutral if all RGB channels are balanced within 0.1% and 
+    fall within the specified lightness range.
+- Fallback Method: Lab Color Space Check
+  - Lab Tolerance: ±0.5 for a* and b* channels. Ensures near-zero chroma.
+  - Lab Lightness Range: 5.0 to 95.0. Slightly broader than RGB range.
+  - Logic: Used when RGB method fails. Checks if a* and b* are near zero with valid L* value.
+
+SINGLE_DIM_STEPS are estimated by reading single-dimension color ramps where 
+two RGB channels remain static while the third creates a ramp pattern.
+A single-channel ramp is defined as a sequence where:
+    - Two RGB channels remain constant (within tolerance)
+    - One RGB channel changes progressively (positive or negative direction)
+    - At least 3 patches are required to form a valid ramp
+    - Patches must be spatially adjacent (all horizontal OR all vertical)
 
 2. TI2 FILE (.ti2)
 ------------------
 Contains:
     • Header (descriptor, originator, timestamp)
-    • APPROX_WHITE_POINT
     • STRIP and PATCH index patterns inferred from row/col labels
     • STEPS_IN_PASS     = num_rows
     • PASSES_IN_STRIPS2 = num_cols
     • Index order       = STRIP_THEN_PATCH
-    • Data fields (SAMPLE_ID, SAMPLE_LOC, RGB, XYZ, Lab)
-    • Complete patch data
+    • Dynamically generated:
+        • APPROX_WHITE_POINT
+        • NUMBER_OF_FIELDS
+        • NUMBER_OF_SETS
+    • Complete patch data (SAMPLE_ID, SAMPLE_LOC, RGB, XYZ, Lab)
 
 SAMPLE_LOC corresponds to labels such as "A1", "D14", "C07", etc.
 
@@ -165,11 +243,14 @@ If missing, the script prints installation instructions and exits.
 ERROR CONDITIONS
 ----------------
 The script stops with a readable message when:
+    • Coordinates and Row/Column numbers cause measurement areas to be missaligned 
+      with patch centres of the target image.
     • Labels do not match row/column counts
     • Output color space tokens are invalid
     • sample_fraction exceeds allowed range
     • Grid geometry cannot be computed
     • Any I/O error occurs during file writing
+    • File path to image, pre_cond_profile, or output directory is invalid
 
 --------------------------------------------------------------------------------
 WORKFLOW SUMMARY
@@ -190,12 +271,28 @@ COMMAND-LINE ARGUMENTS
 ================================================================================
 --image / -i                    Path to input image containing colour patch grid.
                                 Input image must be an image target made for printing.
---pre_cond_profile              ICC/ICM profile file path, used as device pre-conditioning profile. Default: 'sRGB.icm'.
-                                This adapts/shapes the XYZ and LAB values to a known device/printer profile
-                                or color space profile. This also affects the approx. white point value.
+--pre_cond_profile              ICC/ICM profile file path, used as device 
+                                pre-conditioning profile. Default: 'sRGB.icm'.
+                                This adapts/shapes the XYZ and LAB values to a known 
+                                device/printer profile or color space profile. 
+                                This also affects the approx. white point value.
 --patch_first_xy                "X,Y" coordinates (floats or ints) of the ***centre***
-                                of the first patch (top-left patch). Origin is top-left of the image.
---patch_last_xy                 "X,Y" coordinates (floats or ints) of the ***centre*** of the last patch (bottom-right patch).
+                                of the first patch (top-left patch). Origin is top-left 
+                                of the image.
+--patch_last_xy                 "X,Y" coordinates (floats or ints) of the ***centre*** 
+                                of the last patch (bottom-right patch). Accepts integers 
+                                or floats.
+                                Note: In some cases some pathces on last row of image 
+                                may not exist. In these cases to ccordinates to the 
+                                last row and column, as if it would exist, must be 
+                                provided. After generating of .ti1, .ti2 and .csv 
+                                files the last patches must be manually removed, if 
+                                output must be exact like original image. 
+                                If patch_label_order is col_then_row then the patces 
+                                to remove are in sequence at the end of the list, but 
+                                if row_then_col is used, then you would need to search 
+                                for the patch lables (SAMPLE_LOC) to locate them and 
+                                remove them.
 --patch_width_height_ratio      Width ÷ height (W/H) ratio of a single patch.
                                     Examples:
                                       1.0   → square patches
@@ -204,31 +301,35 @@ COMMAND-LINE ARGUMENTS
 --num_rows                      Number of rows in the grid.
 --row_labels
 --col_labels
-                                Define the label sequences. Must match num_rows / num_cols exactly.
+                                Define the label sequences. Must match num_rows / num_cols 
+                                exactly.
                                 Supported formats:
                                 • Numeric: 1-27, 03-15, 0001-0120 (zero-padding preserved)
                                 • Alphabetic: A-Z, A-AA, BQ-CF, up to ZZ
                                 Notes:
-                                • Alphabetic and numeric are mutually exclusive between row and column:
-                                  If rows use alphabetic labels, columns must be numeric, and vice-versa.
+                                • Alphabetic and numeric are mutually exclusive between 
+                                row and column: If rows use alphabetic labels, columns 
+                                must be numeric, and vice-versa.
 --patch_label_order             Determines how the patch label is formed:
                                   col_then_row → "<col><row>"
                                   row_then_col → "<row><col>"
 --output_color_space           Comma-separated list. Allowed tokens: RGB, XYZ, LAB
-                                Specifies **which colour spaces** to output in generated file, and in what order.
-                                TI1 only includes RGB and/or XYZ. TI2/CSV includes any defined token.
+                                Specifies **which colour spaces** to output in generated 
+                                file, and in what order.
+                                TI1 only includes RGB and/or XYZ. TI2/CSV includes any 
+                                defined token.
                                 Example tokens:
                                   RGB,XYZ       →   TI1 includes RGB,XYZ; TI2/CSV includes RGB,XYZ
                                   XYZ,LAB,RGB   →   TI1 includes XYZ,RGB; TI2/CSV includes XYZ,LAB,RGB
                                 Output columns follow the specified sequence.
 --sample_fraction               Fraction of patch to sample; default 0.50 (50%).
-                                The sampling square is centred on the patch centre and is clamped to
-                                at least 3×3 pixels and at most 60% of patch size.
+                                The sampling square is centred on the patch centre and 
+                                is clamped to at least 3×3 pixels and at most 60% of patch size.
 --sample_mode                    "mean" (default) or "median" for robust sampling
 --output                         [Optional] output filename (defaults to <imagebasename>.ti1/ti2/csv)
 
 ================================================================================
-COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
+COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
 ================================================================================
 - RGB are written as **iRGB** percentage values: 0.000000 .. 100.000000
   (Argyll convention; device nominal percentages).
@@ -239,7 +340,7 @@ COLOR / SCALING CONVENTIONS IN OUTPUT FILES (Argyll-compatible)
   * **Scaled so that white has Y = 100.000000**
   * Numeric precision: six decimal places.
 
-- Lab in output:
+- Lab in output:
   * CIE L*a*b* (1976), computed using **D50** reference white (Xn, Yn, Zn)
   * L in range ~0..100, a and b around typical -128..128 ranges.
   * Numeric precision: six decimal places.
@@ -272,10 +373,11 @@ For each patch:
 2. A square sampling region of size `sample_size × sample_size`
    (odd number, min 3, max 60% of patch) is centred at (Cx, Cy).
 3. The script extracts all pixels inside this region.
-4. The sampled RGB values are averaged in 16-bit integer space (8-bit inputs are scaled to 16-bit via *257).
+4. The sampled RGB values are averaged (MAD-based sigma) in 16-bit integer space 
+   (8-bit inputs are scaled to 16-bit via *257).
 5. Colour conversions are applied using xicclu:
-      averaged 16-bit RGB (scaled to 0..1 via /65535)
-          -> colormath: RGB -> CIEXYZ XYZ (D50) -> Lab (D50)
+   - RGB -> CIEXYZ XYZ (D50) 
+   - RGB -> Lab (D50)
 
 ================================================================================
 Output File Format (ArgyllCMS TI2)
@@ -1431,6 +1533,142 @@ def CountNeutral(patches):
     return neutral_count
 
 
+def CountSingleChannelRamps(patches, num_cols, num_rows):
+    """Count single-dimension color ramps where two RGB channels remain static while the third creates a ramp pattern.
+    
+    Returns the most commonly detected number of steps for single-channel ramps.
+    A single-channel ramp is defined as a sequence where:
+    - Two RGB channels remain constant (within tolerance)
+    - One RGB channel changes progressively (positive or negative direction)
+    - At least 3 patches are required to form a valid ramp
+    - Patches must be spatially adjacent (all horizontal OR all vertical)
+    
+    Args:
+        patches: List of PatchInfo objects with rgb_percent attribute
+        num_cols: Number of columns in the grid
+        num_rows: Number of rows in the grid
+        
+    Returns:
+        int: Most commonly detected number of steps for single-channel ramps (0 if no ramps found)
+    """
+    if not patches:
+        return 0
+    
+    # Filter patches with valid RGB data
+    rgb_patches = [p for p in patches if p.rgb_percent]
+    if len(rgb_patches) < 3:
+        return 0
+    
+    tolerance = 0.5  # Tolerance for detecting "static" channels
+    min_ramp_length = 3  # Minimum patches to form a ramp
+    ramp_step_counts = []  # Store step counts for all detected ramps
+    
+    # Create spatial mapping: row -> col -> patch_index
+    patch_grid = {}
+    for p in rgb_patches:
+        # Convert patch index to row, col coordinates
+        row = (p.index - 1) // num_cols
+        col = (p.index - 1) % num_cols
+        if row not in patch_grid:
+            patch_grid[row] = {}
+        patch_grid[row][col] = p
+    
+    # Extract RGB values
+    rgb_values = [(p.rgb_percent[0], p.rgb_percent[1], p.rgb_percent[2]) for p in rgb_patches]
+    
+    # Check each possible ramp pattern (R-static, G-static, B-static)
+    for channel_idx, channel_name in [(0, 'R'), (1, 'G'), (2, 'B')]:
+        # Get indices of the two static channels
+        static_channels = [i for i in [0, 1, 2] if i != channel_idx]
+        
+        # Group patches by similar static channel values
+        ramp_groups = {}
+        
+        for i, (r, g, b) in enumerate(rgb_values):
+            # Get values of static channels
+            static_key = (round(rgb_values[i][static_channels[0]] / tolerance) * tolerance,
+                        round(rgb_values[i][static_channels[1]] / tolerance) * tolerance)
+            
+            if static_key not in ramp_groups:
+                ramp_groups[static_key] = []
+            ramp_groups[static_key].append((i, rgb_values[i][channel_idx]))
+        
+        # Analyze each group for spatially adjacent ramp patterns
+        for static_key, channel_values in ramp_groups.items():
+            if len(channel_values) < min_ramp_length:
+                continue
+            
+            # Sort by the changing channel value
+            channel_values.sort(key=lambda x: x[1])
+            
+            # Check if this forms a valid ramp (monotonic progression)
+            values_only = [val for idx, val in channel_values]
+            
+            # Check for monotonic increase or decrease
+            is_increasing = all(values_only[i] <= values_only[i+1] for i in range(len(values_only)-1))
+            is_decreasing = all(values_only[i] >= values_only[i+1] for i in range(len(values_only)-1))
+            
+            if is_increasing or is_decreasing:
+                # Check spatial adjacency
+                patch_indices = [idx for idx, val in channel_values]
+                
+                # Check if all patches are in the same row (horizontal ramp)
+                is_horizontal_ramp = False
+                is_vertical_ramp = False
+                
+                # Get row, col for each patch
+                patch_positions = []
+                for idx in patch_indices:
+                    row = (idx) // num_cols
+                    col = (idx) % num_cols
+                    patch_positions.append((row, col))
+                
+                # Check horizontal adjacency (same row, consecutive columns)
+                rows = set(pos[0] for pos in patch_positions)
+                if len(rows) == 1:  # All in same row
+                    cols = sorted(pos[1] for pos in patch_positions)
+                    if all(cols[i+1] - cols[i] == 1 for i in range(len(cols)-1)):
+                        is_horizontal_ramp = True
+                
+                # Check vertical adjacency (same column, consecutive rows)
+                cols = set(pos[1] for pos in patch_positions)
+                if len(cols) == 1:  # All in same column
+                    rows = sorted(pos[0] for pos in patch_positions)
+                    if all(rows[i+1] - rows[i] == 1 for i in range(len(rows)-1)):
+                        is_vertical_ramp = True
+                
+                # Only count if spatially adjacent
+                if is_horizontal_ramp or is_vertical_ramp:
+                    ramp_steps = len(values_only)
+                    ramp_step_counts.append(ramp_steps)
+                    
+                    # DEBUG: Print ramp details when debug flag is enabled
+                    if DEBUG:
+                        static_channel_names = ['R', 'G', 'B']
+                        print(f"\n=== DETECTED {channel_name}-CHANNEL RAMP ===")
+                        print(f"Static channels: {static_channel_names[static_channels[0]]}={static_key[0]:.1f}%, {static_channel_names[static_channels[1]]}={static_key[1]:.1f}%")
+                        print(f"Ramp direction: {'INCREASING' if is_increasing else 'DECREASING'}")
+                        print(f"Spatial pattern: {'HORIZONTAL' if is_horizontal_ramp else 'VERTICAL'}")
+                        print(f"Steps: {ramp_steps}")
+                        print("Patch details (SAMPLE_ID, RGB):")
+                        for idx, val in channel_values:
+                            patch = rgb_patches[idx]
+                            r, g, b = patch.rgb_percent
+                            print(f"  SAMPLE_ID {patch.index}: RGB=({r:.6f}, {g:.6f}, {b:.6f})")
+    
+    # Return the most commonly detected step count
+    if not ramp_step_counts:
+        return 0
+    
+    # Count frequency of each step count
+    from collections import Counter
+    step_frequencies = Counter(ramp_step_counts)
+    
+    # Return the most common step count (if tie, returns the first encountered)
+    most_common_steps = step_frequencies.most_common(1)[0][0]
+    return most_common_steps
+
+
 # -------- File Writers --------
 class PatchFileWriter:
     """Abstract base class for writers that emit patch measurements to files.
@@ -1505,9 +1743,11 @@ class TI1Writer(PatchFileWriter):
             white_count = Count_White(self.patches, self.white_point_xyz)
             black_count = Count_Black(self.patches, self.black_point_xyz)
             neutral_count = CountNeutral(self.patches)
+            single_channel_ramp_count = CountSingleChannelRamps(self.patches, self.num_cols, self.num_rows)
             fh.write(f'WHITE_COLOR_PATCHES "{white_count}"\n')
             fh.write(f'BLACK_COLOR_PATCHES "{black_count}"\n')
-            fh.write(f'NEUTRAL_STEPS "{neutral_count}"\n\n')
+            fh.write(f'NEUTRAL_STEPS "{neutral_count}"\n')
+            fh.write(f'SINGLE_DIM_STEPS "{single_channel_ramp_count}"\n\n')
 
             # Build headers according to requested column blocks
             headers = ["SAMPLE_ID"]
