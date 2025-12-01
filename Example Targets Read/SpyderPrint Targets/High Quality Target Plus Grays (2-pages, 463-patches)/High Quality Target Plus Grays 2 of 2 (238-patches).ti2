@@ -1,7 +1,7 @@
 CTI2
 
 DESCRIPTOR "Argyll Calibration Target chart information 2"
-ORIGINATOR "read_image_patch_colors.py (colormath backend)"
+ORIGINATOR "read_image_patch_colors.py"
 CREATED "Mon Dec  1 04:06:25 2025"
 ACCURATE_EXPECTED_VALUES "true"
 APPROX_WHITE_POINT "95.053991 99.997087 108.929552"
