@@ -157,33 +157,33 @@ Contains:
         • APPROX_WHITE_POINT
         • WHITE_COLOR_PATCHES
         • BLACK_COLOR_PATCHES
-        • NEUTRAL_STEPS
+        • COMP_GREY_STEPS
         • SINGLE_DIM_STEPS
         • NUMBER_OF_FIELDS
         • NUMBER_OF_SETS
         • DENSITY_EXTREME_VALUES table
         • DEVICE_COMBINATION_VALUES table
 
-NEUTRAL_STEPS are estimated by reading patch colors using a two-tiered approach 
-with RGB balance as the primary method and Lab values as a fallback.
+Tags containing a dynamically calculated number are omitted if 0 (zero).
 
-Primary Method: RGB Balance Check
-- RGB Tolerance: 0.1%. Very tight tolerance requiring near-perfect R=G=B balance
-  - Lightness Range: 3.0% to 97.0%. Excludes pure black and white patches.
-  - Logic: A patch is neutral if all RGB channels are balanced within 0.1% and 
-    fall within the specified lightness range.
-- Fallback Method: Lab Color Space Check
-  - Lab Tolerance: ±0.5 for a* and b* channels. Ensures near-zero chroma.
-  - Lab Lightness Range: 5.0 to 95.0. Slightly broader than RGB range.
-  - Logic: Used when RGB method fails. Checks if a* and b* are near zero with valid L* value.
+COMP_GREY_STEPS 
+Number represents count of patches with equal RGB channel values.
+RGB Balance Check:
+    - RGB Tolerance: 0.1%. Very tight tolerance requiring near-perfect R=G=B balance
+    - Lightness Range: 1.0% to 99.0%. Excludes pure black and white patches.
+    - Logic: A patch is neutral if all RGB channels are balanced within 0.1% and 
+      fall within the specified lightness range.
 
-SINGLE_DIM_STEPS are estimated by reading single-dimension color ramps where 
-two RGB channels remain static while the third creates a ramp pattern.
+SINGLE_DIM_STEPS 
+This number is estimated by reading single-dimension color ramps where two RGB 
+channels remain static while the third creates a ramp pattern. The number 
+represents the most commonly detected number of steps for single-channel ramps. 
 A single-channel ramp is defined as a sequence where:
     - Two RGB channels remain constant (within tolerance)
     - One RGB channel changes progressively (positive or negative direction)
     - At least 3 patches are required to form a valid ramp
-    - Patches must be spatially adjacent (all horizontal OR all vertical)
+    - Values are approximately evenly spaced (uniform spacing between steps)
+    - Patches can be in any order (randomized)
 
 2. TI2 FILE (.ti2)
 ------------------
@@ -1492,17 +1492,25 @@ def Count_Black(patches, black_point_xyz):
     return black_count
 
 
-def CountNeutral(patches):
-    """Count neutral/gray patches using RGB balance as primary method."""
-    neutral_count = 0
-    rgb_tolerance = 0.1  # Very tight RGB tolerance for balance
-    min_lightness = 3.0   # Minimum RGB value for gray (above black)
-    max_lightness = 97.0  # Maximum RGB value for gray (below white)
+def CountCompGrey(patches):
+    """Count composite gray patches (equal device channel values R=G=B).
+    
+    Returns count of patches with equal RGB channel values.
+    This corresponds to COMP_GREY_STEPS in ArgyllCMS targen specification.
+    
+    Args:
+        patches: List of PatchInfo objects with rgb_percent attribute
+        
+    Returns:
+        int: Number of composite gray patches
+    """
+    comp_grey_count = 0
+    rgb_tolerance = 0.1   # Very tight RGB tolerance for balance
+    min_lightness = 1.0   # Minimum RGB value for gray (above black)
+    max_lightness = 99.0  # Maximum RGB value for gray (below white)
     
     for p in patches:
-        is_neutral = False
-        
-        # Primary method: Check RGB balance (R=G=B within tolerance)
+        # Check RGB balance (R=G=B within tolerance)
         if p.rgb_percent:
             r, g, b = p.rgb_percent
             
@@ -1512,25 +1520,9 @@ def CountNeutral(patches):
                 abs(g - b) <= rgb_tolerance):
                 # Also ensure it's not pure black or white
                 if min_lightness <= r <= max_lightness:
-                    is_neutral = True
-        
-        # Fallback method: Check Lab values if RGB method didn't work
-        if not is_neutral and (p.lab[0] is not None and 
-                              p.lab[1] is not None and 
-                              p.lab[2] is not None):
-            lab_tolerance = 0.5
-            min_lab_lightness = 5.0
-            max_lab_lightness = 95.0
-            
-            if (abs(p.lab[1]) <= lab_tolerance and 
-                abs(p.lab[2]) <= lab_tolerance and
-                min_lab_lightness <= p.lab[0] <= max_lab_lightness):
-                is_neutral = True
-        
-        if is_neutral:
-            neutral_count += 1
+                    comp_grey_count += 1
     
-    return neutral_count
+    return comp_grey_count
 
 
 def CountSingleChannelRamps(patches, num_cols, num_rows):
@@ -1541,12 +1533,13 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
     - Two RGB channels remain constant (within tolerance)
     - One RGB channel changes progressively (positive or negative direction)
     - At least 3 patches are required to form a valid ramp
-    - Patches must be spatially adjacent (all horizontal OR all vertical)
+    - Values are approximately evenly spaced (uniform spacing between steps)
+    - Patches can be in any order (randomized)
     
     Args:
         patches: List of PatchInfo objects with rgb_percent attribute
-        num_cols: Number of columns in the grid
-        num_rows: Number of rows in the grid
+        num_cols: Number of columns in the grid (unused, kept for compatibility)
+        num_rows: Number of rows in the grid (unused, kept for compatibility)
         
     Returns:
         int: Most commonly detected number of steps for single-channel ramps (0 if no ramps found)
@@ -1563,18 +1556,29 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
     min_ramp_length = 3  # Minimum patches to form a ramp
     ramp_step_counts = []  # Store step counts for all detected ramps
     
-    # Create spatial mapping: row -> col -> patch_index
-    patch_grid = {}
-    for p in rgb_patches:
-        # Convert patch index to row, col coordinates
-        row = (p.index - 1) // num_cols
-        col = (p.index - 1) % num_cols
-        if row not in patch_grid:
-            patch_grid[row] = {}
-        patch_grid[row][col] = p
-    
     # Extract RGB values
     rgb_values = [(p.rgb_percent[0], p.rgb_percent[1], p.rgb_percent[2]) for p in rgb_patches]
+    
+    def check_uniform_spacing(values):
+        """Check if values are approximately evenly spaced."""
+        if len(values) < 2:
+            return True
+        
+        # Calculate spacing between consecutive values
+        spacings = [values[i+1] - values[i] for i in range(len(values)-1)]
+        
+        # Check if all spacings are approximately equal
+        if len(spacings) < 2:
+            return True
+        
+        avg_spacing = sum(spacings) / len(spacings)
+        spacing_tolerance = avg_spacing * 0.1  # 10% tolerance
+        
+        for spacing in spacings:
+            if abs(spacing - avg_spacing) > spacing_tolerance:
+                return False
+        
+        return True
     
     # Check each possible ramp pattern (R-static, G-static, B-static)
     for channel_idx, channel_name in [(0, 'R'), (1, 'G'), (2, 'B')]:
@@ -1593,7 +1597,7 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
                 ramp_groups[static_key] = []
             ramp_groups[static_key].append((i, rgb_values[i][channel_idx]))
         
-        # Analyze each group for spatially adjacent ramp patterns
+        # Analyze each group for uniform spacing ramp patterns
         for static_key, channel_values in ramp_groups.items():
             if len(channel_values) < min_ramp_length:
                 continue
@@ -1601,7 +1605,7 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
             # Sort by the changing channel value
             channel_values.sort(key=lambda x: x[1])
             
-            # Check if this forms a valid ramp (monotonic progression)
+            # Extract just the channel values for analysis
             values_only = [val for idx, val in channel_values]
             
             # Check for monotonic increase or decrease
@@ -1609,36 +1613,8 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
             is_decreasing = all(values_only[i] >= values_only[i+1] for i in range(len(values_only)-1))
             
             if is_increasing or is_decreasing:
-                # Check spatial adjacency
-                patch_indices = [idx for idx, val in channel_values]
-                
-                # Check if all patches are in the same row (horizontal ramp)
-                is_horizontal_ramp = False
-                is_vertical_ramp = False
-                
-                # Get row, col for each patch
-                patch_positions = []
-                for idx in patch_indices:
-                    row = (idx) // num_cols
-                    col = (idx) % num_cols
-                    patch_positions.append((row, col))
-                
-                # Check horizontal adjacency (same row, consecutive columns)
-                rows = set(pos[0] for pos in patch_positions)
-                if len(rows) == 1:  # All in same row
-                    cols = sorted(pos[1] for pos in patch_positions)
-                    if all(cols[i+1] - cols[i] == 1 for i in range(len(cols)-1)):
-                        is_horizontal_ramp = True
-                
-                # Check vertical adjacency (same column, consecutive rows)
-                cols = set(pos[1] for pos in patch_positions)
-                if len(cols) == 1:  # All in same column
-                    rows = sorted(pos[0] for pos in patch_positions)
-                    if all(rows[i+1] - rows[i] == 1 for i in range(len(rows)-1)):
-                        is_vertical_ramp = True
-                
-                # Only count if spatially adjacent
-                if is_horizontal_ramp or is_vertical_ramp:
+                # Check if values are approximately evenly spaced
+                if check_uniform_spacing(values_only):
                     ramp_steps = len(values_only)
                     ramp_step_counts.append(ramp_steps)
                     
@@ -1648,8 +1624,8 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
                         print(f"\n=== DETECTED {channel_name}-CHANNEL RAMP ===")
                         print(f"Static channels: {static_channel_names[static_channels[0]]}={static_key[0]:.1f}%, {static_channel_names[static_channels[1]]}={static_key[1]:.1f}%")
                         print(f"Ramp direction: {'INCREASING' if is_increasing else 'DECREASING'}")
-                        print(f"Spatial pattern: {'HORIZONTAL' if is_horizontal_ramp else 'VERTICAL'}")
                         print(f"Steps: {ramp_steps}")
+                        print(f"Channel values: {[f'{v:.1f}%' for v in values_only]}")
                         print("Patch details (SAMPLE_ID, RGB):")
                         for idx, val in channel_values:
                             patch = rgb_patches[idx]
@@ -1739,15 +1715,22 @@ class TI1Writer(PatchFileWriter):
 
             fh.write('COLOR_REP "iRGB"\n')
 
-            # Add white, black, and neutral patch counts
+            # Add white, black, composite grey, and neutral patch counts
             white_count = Count_White(self.patches, self.white_point_xyz)
             black_count = Count_Black(self.patches, self.black_point_xyz)
-            neutral_count = CountNeutral(self.patches)
+            comp_grey_count = CountCompGrey(self.patches)
             single_channel_ramp_count = CountSingleChannelRamps(self.patches, self.num_cols, self.num_rows)
-            fh.write(f'WHITE_COLOR_PATCHES "{white_count}"\n')
-            fh.write(f'BLACK_COLOR_PATCHES "{black_count}"\n')
-            fh.write(f'NEUTRAL_STEPS "{neutral_count}"\n')
-            fh.write(f'SINGLE_DIM_STEPS "{single_channel_ramp_count}"\n\n')
+            
+            # Only write count tags when values are non-zero
+            if white_count > 0:
+                fh.write(f'WHITE_COLOR_PATCHES "{white_count}"\n')
+            if black_count > 0:
+                fh.write(f'BLACK_COLOR_PATCHES "{black_count}"\n')
+            if comp_grey_count > 0:
+                fh.write(f'COMP_GREY_STEPS "{comp_grey_count}"\n')
+            if single_channel_ramp_count > 0:
+                fh.write(f'SINGLE_DIM_STEPS "{single_channel_ramp_count}"\n')
+            fh.write('\n')
 
             # Build headers according to requested column blocks
             headers = ["SAMPLE_ID"]
