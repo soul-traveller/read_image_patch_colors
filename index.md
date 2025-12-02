@@ -79,6 +79,7 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
     </tr>
   </thead>
   <tbody>
+
     <tr>
       <td><code>--image</code> / <code>-i</code></td>
       <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a RGB image used as target for calibration.</td>
@@ -91,13 +92,13 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
         <br /><br />
         Supported path formats:
         <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;">• MyProfile.icm</td><td style="border: none;">(current folder)</td></tr>
-          <tr><td style="border: none;">• /System/Library/ColorSync/Profiles/MyProfile.icc</td><td style="border: none;"></td></tr>
-          <tr><td style="border: none;">• ./profiles/AdobeRGB1998.icc</td><td style="border: none;">(Current folder is ref.)</td></tr>
-          <tr><td style="border: none;">• ../MyProfile.icc</td><td style="border: none;">(one folder up)</td></tr>
-          <tr><td style="border: none;">• C:\Windows\MyProfile.icm</td><td style="border: none;"></td></tr>
-          <tr><td style="border: none;">• C:/Color/MyProfile.icm</td><td style="border: none;"></td></tr>
-          <tr><td style="border: none;">• /usr/share/color/icc/MyProfile.icc</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">→ MyProfile.icm</td><td style="border: none;">(current folder)</td></tr>
+          <tr><td style="border: none;">→ /System/Library/ColorSync/Profiles/MyProfile.icc</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">→ ./profiles/AdobeRGB1998.icc</td><td style="border: none;">(Current folder is ref.)</td></tr>
+          <tr><td style="border: none;">→ ../MyProfile.icc</td><td style="border: none;">(one folder up)</td></tr>
+          <tr><td style="border: none;">→ C:\Windows\MyProfile.icm</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">→ C:/Color/MyProfile.icm</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">→ /usr/share/color/icc/MyProfile.icc</td><td style="border: none;"></td></tr>
         </table>
       </td>
     </tr>
@@ -217,8 +218,8 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
       <td>
         Determines initial traversal order before rotation/mirroring, if applied:
         <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">iterate row by row (top→bottom, left→right)</td></tr>
-          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">iterate column by column (left→right, top→bottom)</td></tr>
+          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">→ iterate row by row (top→bottom, left→right)</td></tr>
+          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">→ iterate column by column (left→right, top→bottom)</td></tr>
         </table>
       </td>
     </tr>
@@ -228,8 +229,8 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
       <td>
         Reverse traversal <b>after</b> <code>output_order</code> and <code>rotate_grid</code>:
         <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">reverse column labels for each row (vertical flip)</td></tr>
-          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">reverse row labels for each column (horizontal flip)</td></tr>
+          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">→ reverse column labels for each row (vertical flip)</td></tr>
+          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">→ reverse row labels for each column (horizontal flip)</td></tr>
         </table>
       </td>
     </tr>
@@ -240,9 +241,9 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
         Rotate the entire patch grid <b>clockwise</b> before mirroring (if <code>mirror_output</code> applied). Allowed values:
         <table style="border-collapse: collapse; border: none;">
           <tr><td style="border: none;"><code>0</code></td><td style="border: none;">(default)</td></tr>
-          <tr><td style="border: none;"><code>90</code></td><td style="border: none;">rotate 90° CW</td></tr>
-          <tr><td style="border: none;"><code>180</code></td><td style="border: none;">rotate 180°</td></tr>
-          <tr><td style="border: none;"><code>270</code></td><td style="border: none;">rotate 270° CW</td></tr>
+          <tr><td style="border: none;"><code>90</code></td><td style="border: none;">→ rotate 90° CW</td></tr>
+          <tr><td style="border: none;"><code>180</code></td><td style="border: none;">→ rotate 180° CW</td></tr>
+          <tr><td style="border: none;"><code>270</code></td><td style="border: none;">→ rotate 270° CW</td></tr>
         </table>
         Applied <b>after output_order</b>, <b>before mirror_output</b>.
       </td>
