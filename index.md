@@ -83,96 +83,193 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
       <td><code>--image</code> / <code>-i</code></td>
       <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a RGB image used as target for calibration.</td>
     </tr>
+
     <tr>
       <td><code>--pre_cond_profile</code></td>
-      <td>ICC/ICM profile file path, used as device pre-conditioning profile. Default: 'sRGB.icm'. This adapts/shapes the XYZ and LAB values to a known device/printer profile or color space profile. This also affects the approx. white point value. For simplicity, place icc file in same folder as script.
-      <br><br>
-              Supported path formats:<br>
-              - MyProfile.icm (current folder)<br>
-              - /System/Library/ColorSync/Profiles/MyProfile.icc<br>
-              - ./profiles/AdobeRGB1998.icc (Current folder is ref.)<br>
-              - ../MyProfile.icc (one folder up)<br>
-              - C:\Windows\MyProfile.icm<br>
-              - C:/Color/MyProfile.icm<br>
-              - /usr/share/color/icc/MyProfile.icc
-              </td>
+      <td>
+        ICC/ICM profile file path, used as device pre-conditioning profile. Default: 'sRGB.icm'. This adapts/shapes the XYZ and LAB values to a known device/printer profile or color space profile. This also affects the approx. white point value. For simplicity, place icc file in same folder as script.
+        <br /><br />
+        Supported path formats:
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;">• MyProfile.icm</td><td style="border: none;">(current folder)</td></tr>
+          <tr><td style="border: none;">• /System/Library/ColorSync/Profiles/MyProfile.icc</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">• ./profiles/AdobeRGB1998.icc</td><td style="border: none;">(Current folder is ref.)</td></tr>
+          <tr><td style="border: none;">• ../MyProfile.icc</td><td style="border: none;">(one folder up)</td></tr>
+          <tr><td style="border: none;">• C:\Windows\MyProfile.icm</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">• C:/Color/MyProfile.icm</td><td style="border: none;"></td></tr>
+          <tr><td style="border: none;">• /usr/share/color/icc/MyProfile.icc</td><td style="border: none;"></td></tr>
+        </table>
+      </td>
+    </tr>
+
     <tr>
       <td><code>--patch_first_xy</code></td>
       <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the first patch</b> (top-left). Accepts integers or floats.</td>
     </tr>
+
     <tr>
       <td><code>--patch_last_xy</code></td>
-      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the last patch</b> (bottom-right). Accepts integers or floats.<br><b>Note:</b> In some cases some pathces on last row of image may not exist. In these cases to ccordinates to the last row and column, as if it would exist, must be provided. After generating of .ti1, .ti2 and .csv files the last patches must be manually removed, if output must be exact like original image. If patch_label_order is col_then_row then the patces to remove are in sequence at the end of the list, but if row_then_col is used, then you would need to search for the patch lables (SAMPLE_LOC) to locate them and remove them.</td>
+      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the last patch</b> (bottom-right). Accepts integers or floats.<br /><b>Note:</b> In some cases some pathces on last row of image may not exist. In these cases to ccordinates to the last row and column, as if it would exist, must be provided. After generating of .ti1, .ti2 and .csv files the last patches must be manually removed, if output must be exact like original image. If patch_label_order is col_then_row then the patces to remove are in sequence at the end of the list, but if row_then_col is used, then you would need to search for the patch lables (SAMPLE_LOC) to locate them and remove them.</td>
     </tr>
+
     <tr>
       <td><code>--patch_width_height_ratio</code></td>
-      <td><b>(Required)</b> Width ÷ Height ratio (W/H) of a single patch.<br>Examples: <code>1.0</code> (square), <code>1.378</code>, etc.</td>
+      <td><b>(Required)</b> Width ÷ Height ratio (W/H) of a single patch.<br />Examples: <code>1.0</code> (square), <code>1.378</code>, etc.</td>
     </tr>
+
     <tr>
       <td><code>--num_cols</code></td>
       <td><b>(Required)</b> Number of columns in the grid.</td>
     </tr>
+
     <tr>
       <td><code>--num_rows</code></td>
       <td><b>(Required)</b> Number of rows in the grid.</td>
     </tr>
+
     <tr>
       <td><code>--sample_fraction</code></td>
-      <td>Fraction of patch area to sample (float). Default: <b>0.50</b> (20%).<br>Constraints: <code>0 &lt; f ≤ 0.6</code>.<br>The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.</td>
+      <td>
+        Fraction of patch area to sample (float). Default: <b>0.50</b> (20%).<br />Constraints: <code>0 &lt; f ≤ 0.6</code>.<br />The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.
+      </td>
     </tr>
+
     <tr>
       <td><code>--row_labels</code></td>
-      <td><b>(Required)</b> Label sequence for rows. Must match <code>num_rows</code> exactly.<br>Allowed patterns:<br>• <b>Numeric ranges:</b> <code>1-15</code>, <code>03-12</code>, <code>0001-0120</code> (zero-padding preserved)<br>• <b>Alphabetic ranges:</b> <code>A-Z</code>, <code>A-AC</code>, <code>BQ-CF</code>, up to <code>ZZ</code><br><b>Note:</b> Rows and columns must use <i>different</i> types (numeric ↔ alphabetic).</td>
+      <td>
+        <b>(Required)</b> Label sequence for rows. Must match <code>num_rows</code> exactly.<br />
+        Allowed patterns:
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;"><code>1-15</code></td><td style="border: none;">Numeric range</td></tr>
+          <tr><td style="border: none;"><code>03-12</code></td><td style="border: none;">Numeric range (zero-padding preserved)</td></tr>
+          <tr><td style="border: none;"><code>0001-0120</code></td><td style="border: none;">Numeric range (zero-padding preserved)</td></tr>
+          <tr><td style="border: none;"><code>A-Z</code></td><td style="border: none;">Alphabetic range</td></tr>
+          <tr><td style="border: none;"><code>A-AC</code></td><td style="border: none;">Alphabetic range</td></tr>
+          <tr><td style="border: none;"><code>BQ-CF</code></td><td style="border: none;">Alphabetic range</td></tr>
+        </table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--col_labels</code></td>
       <td><b>(Required)</b> Label sequence for columns (same rules as <code>row_labels</code>).</td>
     </tr>
+
     <tr>
       <td><code>--patch_label_order</code></td>
-      <td><b>(Required)</b> Determines patch label composition:<br>
-      (Examples assume row_labels are numeric and col_labels are alphabetic)<br>
-      • <code>col_then_row</code> → e.g. <code>A12</code><br>• <code>row_then_col</code> → e.g. <code>12A</code></td>
+      <td>
+        <b>(Required)</b> Determines patch label composition:<br />
+        (Examples assume row_labels are numeric and col_labels are alphabetic)
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;"><code>col_then_row</code></td><td style="border: none;">→ e.g. <code>A12</code></td></tr>
+          <tr><td style="border: none;"><code>row_then_col</code></td><td style="border: none;">→ e.g. <code>12A</code></td></tr>
+        </table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--output_color_space</code></td>
-      <td><b>(Required)</b> Comma-separated list specifying which colour spaces to output (in order). Allowed tokens:<br>• <code>RGB</code><br>• <code>XYZ</code><br>• <code>LAB</code><br>Rules:<br>• TI1 can include only RGB and/or XYZ<br>• TI2/CSV include all listed tokens<br>Examples:<br><code>RGB,XYZ</code> → TI1: RGB,XYZ; TI2: RGB,XYZ.<br><code>XYZ,LAB,RGB</code> → TI1: XYZ,RGB; TI2: XYZ,LAB,RGB.</td>
+      <td>
+        <b>(Required)</b> Comma-separated list specifying which colour spaces to output (in order). Allowed tokens:<br />
+        • <code>RGB</code><br />
+        • <code>XYZ</code><br />
+        • <code>LAB</code><br />
+        Rules:<br />
+        • TI1 can include only RGB and/or XYZ<br />
+        • TI2/CSV include all listed tokens<br />
+        Examples:
+			<table style="border-collapse: collapse; border: none;">
+			  <tr>
+			    <td style="border: none;"><code>RGB,XYZ</code></td>
+			    <td style="border: none;">→ TI1: RGB,XYZ; TI2: RGB,XYZ.</td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;"><code>XYZ,LAB,RGB</code></td>
+			    <td style="border: none;">→ TI1: XYZ,RGB; TI2: XYZ,LAB,RGB.</td>
+			  </tr>
+			</table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--sample_mode</code></td>
-      <td>Patch sampling aggregation method:<br>• <code>mad</code> <i>(default)</i> – robust mean via MAD-based sigma clipping<br>• <code>mean</code> – arithmetic mean (not robust)<br>• <code>median</code> – robust, but biases asymmetric patches</td>
+      <td>
+        Patch sampling aggregation method:<br />
+			<table style="border-collapse: collapse; border: none;">
+			  <tr>
+			    <td style="border: none;"><code>mad <i>(default)</i></code></td>
+			    <td style="border: none;">→ robust mean via MAD-based sigma clipping</td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;"><code>mean</code></td>
+			    <td style="border: none;">→ arithmetic mean (not robust)</td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;"><code>median</code></td>
+			    <td style="border: none;">→ robust, but biases asymmetric patches</td>
+			  </tr>
+			</table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--output_order</code></td>
-      <td>Determines initial traversal order before rotation/mirroring, if applied:<br>• <code>row_major</code> <i>(default)</i>: iterate row by row (top→bottom, left→right)<br>• <code>column_major</code>: iterate column by column (left→right, top→bottom)<br>Applied <b>first</b>, before <code>rotate_grid</code> and <code>mirror_output</code>.</td>
+      <td>
+        Determines initial traversal order before rotation/mirroring, if applied:
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">iterate row by row (top→bottom, left→right)</td></tr>
+          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">iterate column by column (left→right, top→bottom)</td></tr>
+        </table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--mirror_output</code></td>
-      <td>Reverse traversal <b>after</b> <code>output_order</code> and <code>rotate_grid</code>:<br>• If <code>row_major</code>: reverse column labels for each row (vertical flip).<br>• If <code>column_major</code>: reverse row labels for each column (horizontal flip).</td>
+      <td>
+        Reverse traversal <b>after</b> <code>output_order</code> and <code>rotate_grid</code>:
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">reverse column labels for each row (vertical flip)</td></tr>
+          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">reverse row labels for each column (horizontal flip)</td></tr>
+        </table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--rotate_grid</code></td>
-      <td>Rotate the entire patch grid <b>clockwise</b> before mirroring (if <code>mirror_output</code> applied). Allowed values:<br>• <code>0</code> <i>(default)</i><br>• <code>90</code> – rotate 90° CW<br>• <code>180</code> – rotate 180°<br>• <code>270</code> – rotate 270° CW<br>Applied <b>after output_order</b>, <b>before mirror_output</b>.</td>
+      <td>
+        Rotate the entire patch grid <b>clockwise</b> before mirroring (if <code>mirror_output</code> applied). Allowed values:
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;"><code>0</code></td><td style="border: none;">(default)</td></tr>
+          <tr><td style="border: none;"><code>90</code></td><td style="border: none;">rotate 90° CW</td></tr>
+          <tr><td style="border: none;"><code>180</code></td><td style="border: none;">rotate 180°</td></tr>
+          <tr><td style="border: none;"><code>270</code></td><td style="border: none;">rotate 270° CW</td></tr>
+        </table>
+        Applied <b>after output_order</b>, <b>before mirror_output</b>.
+      </td>
     </tr>
+
     <tr>
       <td><code>--output</code></td>
-      <td>Base filename and/or path for generated <code>.ti1</code>, <code>.ti2</code>, and <code>.csv</code> output files.<br>If omitted, filenames are based on the input image name and placed in the same folder as the script. If path is specified, the script will place all output files. If the specified path also includes a filename, the script will use that filename for all output files.<br><br>
-      • Specify only directory, current folder is reference (keep input image name):<br>
-         <div style="margin-left: 20px;">--output "./Outputfolder/"</div>
-      • Specify directory and filename, current folder is reference (override input image name):<br>
-         <div style="margin-left: 20px;">--output "./Outputfolder/Outputfilename"</div>
-      • Specify directory and filename (override input image name):<br>
-         <div style="margin-left: 20px;">--output "User/Username/Outputfolder/Outputfilename"</div>
-      • Specify directory in a prallel folder, one up in structure (keep input image name):<br>
-         <div style="margin-left: 20px;">--output "../Outputfolder/"</div>
-         </td>
+      <td>
+        Base filename and/or path for generated <code>.ti1</code>, <code>.ti2</code>, and <code>.csv</code> output files.<br />
+        If omitted, filenames are based on the input image name and placed in the same folder as the script. If path is specified, the script will place all output files. If the specified path also includes a filename, the script will use that filename for all output files.
+        <table style="border-collapse: collapse; border: none;">
+          <tr><td style="border: none;">--output "./Outputfolder/"</td><td style="border: none;">Only directory, current folder is reference (keep input image name)</td></tr>
+          <tr><td style="border: none;">--output "./Outputfolder/Outputfilename"</td><td style="border: none;">Directory + filename, current folder is reference (override input image name)</td></tr>
+          <tr><td style="border: none;">--output "User/Username/ Outputfolder/Outputfilename"</td><td style="border: none;">Directory + filename (override input image name)</td></tr>
+          <tr><td style="border: none;">--output "../Outputfolder/"</td><td style="border: none;">Directory in parallel folder, one up in structure (keep input image name)</td></tr>
+        </table>
+      </td>
     </tr>
+
     <tr>
       <td><code>--debug</code></td>
       <td>Enable diagnostic printing for the first few patches. Shows sampling geometry, pixel statistics, and intermediate RGB calculations.</td>
     </tr>
+
   </tbody>
 </table>
+
 
 
 # Image Input
