@@ -30,8 +30,8 @@
 # Overview
 This program extracts color values from a rectangular grid of color patches in an image, computes colorimetric values (RGB percentages, XYZ, Lab and approximate white point), applies row/column labeling rules, and writes three output files:
 
-- ArgyllCMS .ti1 file
-- ArgyllCMS .ti2 file
+- ArgyllCMS `.ti1` file
+- ArgyllCMS `.ti2` file
 - CSV file (space-separated)
 
 It supports sampling in mean or median mode, configurable patch geometry, numeric or alphabetic labeling patterns, and RGB/XYZ/Lab output combinations.
@@ -44,11 +44,11 @@ Example use cases for reading the image of a reference target:
 
 1. Create a `.ti1` file so that one may use ArgyllCMS `printtarg` command and generate a target using the colors of the image, which then can be used with ArgyllCMS `chartread` and `colprof` to create a printer profile.<br>
 	- Workflow:<br>
-Read image with script → input `.ti1` to `printtarg` → Print generated Target image without color management → input `.ti2` to `chartread` then read target paches with colorimeter → input `.ti3` to `colprof` → output profile.
+Read image with script → input `.ti1` to `printtarg` → Print generated Target image without color management → input `.ti2` to `chartread` then read target patches with colorimeter → input `.ti3` to `colprof` → output profile.
 
 2. Create a `.ti2` file so that one may use ArgyllCMS `chartread`, and use a colorimeter to read the color values using the original SpyderPrint Targets, which then can be used with ArgyllCMS `colprof` to create a printer profile.
 	- Workflow:<br>
-Read image with script → Print original SpyderPrint Target image without color management → input `.ti2` to `chartread` then read target paches with colorimeter → input `.ti3` to `colprof` → output profile.
+Read image with script → Print original SpyderPrint Target image without color management → input `.ti2` to `chartread` then read target patches with colorimeter → input `.ti3` to `colprof` → output profile.
 
 3. Create a `.ti1` file so that one may use ArgyllCMS `fakeread` command using colors of the image, which then can be used with ArgyllCMS `colprof` to create a simulated profile.<br>
 	- Workflow:<br>
@@ -65,7 +65,7 @@ See chapter [Examples](#examples) for detailed examples on how to read patches f
 - High Quality Target (1-page, 225-patches)
 - High Quality Target Plus Grays (2-pages, 463-patches)
 
-Target images used for creating .ti1, .ti2 and .csv files are under folder [Example Targets Read](https://github.com/soul-traveller/read_image_patch_colors/tree/main/Example%20Targets%20Read).
+Target images used for creating `.ti1`, `.ti2` and .csv files are under folder [Example Targets Read](https://github.com/soul-traveller/read_image_patch_colors/tree/main/Example%20Targets%20Read).
 
 Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Targets are also included.
 
@@ -82,35 +82,56 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
 
     <tr>
       <td><code>--image</code> / <code>-i</code></td>
-      <td><b>(Required)</b> Path to the input image containing the colour-patch grid. Image must be a RGB image used as target for calibration.</td>
+      <td><b>(Required)</b> Path to the input image containing the color-patch grid. Image must be a RGB image used as target for calibration. See more detalis in section <a href="#image-input">Image Input</a>.</td>
     </tr>
 
     <tr>
       <td><code>--pre_cond_profile</code></td>
       <td>
-        ICC/ICM profile file path, used as device pre-conditioning profile. Default: 'sRGB.icm'. This adapts/shapes the XYZ and LAB values to a known device/printer profile or color space profile. This also affects the approx. white point value. For simplicity, place icc file in same folder as script.
+        ICC/ICM profile file path, used as device pre-conditioning profile.<br />Default: <code>sRGB.icm</code>.<br />This adapts/shapes the XYZ and LAB values to a known device/printer profile or color space profile. This also affects the approx. white point value stored in <code>.ti1</code> and <code>.ti2</code> files. RGB values are unaffected. For simplicity, place icc file in same folder as script.
         <br /><br />
         Supported path formats:
-        <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;">→ MyProfile.icm</td><td style="border: none;">(current folder)</td></tr>
-          <tr><td style="border: none;">→ /System/Library/ColorSync/Profiles/MyProfile.icc</td><td style="border: none;"></td></tr>
-          <tr><td style="border: none;">→ ./profiles/AdobeRGB1998.icc</td><td style="border: none;">(Current folder is ref.)</td></tr>
-          <tr><td style="border: none;">→ ../MyProfile.icc</td><td style="border: none;">(one folder up)</td></tr>
-          <tr><td style="border: none;">→ C:\Windows\MyProfile.icm</td><td style="border: none;"></td></tr>
-          <tr><td style="border: none;">→ C:/Color/MyProfile.icm</td><td style="border: none;"></td></tr>
-          <tr><td style="border: none;">→ /usr/share/color/icc/MyProfile.icc</td><td style="border: none;"></td></tr>
-        </table>
+			<table style="border-collapse: collapse; border: none;">
+			  <tr>
+			    <td style="border: none;">→ MyProfile.icm</td>
+			    <td style="border: none; white-space: nowrap;">(current folder)</td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;">→ /System/Library/ColorSync/ Profiles/MyProfile.icc</td>
+			    <td style="border: none; white-space: nowrap;"></td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;">→ ./profiles/AdobeRGB1998.icc</td>
+			    <td style="border: none; white-space: nowrap;">(Current folder is ref.)</td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;">→ ../MyProfile.icc</td>
+			    <td style="border: none; white-space: nowrap;">(one folder up)</td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;">→ C:\Windows\MyProfile.icm</td>
+			    <td style="border: none; white-space: nowrap;"></td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;">→ C:/Color/MyProfile.icm</td>
+			    <td style="border: none; white-space: nowrap;"></td>
+			  </tr>
+			  <tr>
+			    <td style="border: none;">→ /usr/share/color/icc/MyProfile.icc</td>
+			    <td style="border: none; white-space: nowrap;"></td>
+			  </tr>
+			</table>
       </td>
     </tr>
 
     <tr>
       <td><code>--patch_first_xy</code></td>
-      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the first patch</b> (top-left). Accepts integers or floats.</td>
+      <td><b>(Required)</b> "X,Y" coordinates of the <b>center of the first patch</b> (top-left). Accepts integers or floats.</td>
     </tr>
 
     <tr>
       <td><code>--patch_last_xy</code></td>
-      <td><b>(Required)</b> "X,Y" coordinates of the <b>centre of the last patch</b> (bottom-right). Accepts integers or floats.<br /><b>Note:</b> In some cases some pathces on last row of image may not exist. In these cases to ccordinates to the last row and column, as if it would exist, must be provided. After generating of .ti1, .ti2 and .csv files the last patches must be manually removed, if output must be exact like original image. If patch_label_order is col_then_row then the patces to remove are in sequence at the end of the list, but if row_then_col is used, then you would need to search for the patch lables (SAMPLE_LOC) to locate them and remove them.</td>
+      <td><b>(Required)</b> "X,Y" coordinates of the <b>center of the last patch</b> (bottom-right). Accepts integers or floats.<br /><b>Note:</b> In some cases some patches on last row of image may not exist. In these cases, coordinates must be to the last row and column, as if it would exist. After generating of <code>.ti1</code>, <code>.ti2</code> and <code>.csv</code> files the last patches must be manually removed, if output must be exact like original image. If patch_label_order is col_then_row then the patces to remove are in sequence at the end of the list, but if row_then_col is used, then you would need to search for the patch lables (SAMPLE_LOC) to locate them and remove them.</td>
     </tr>
 
     <tr>
@@ -131,7 +152,7 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
     <tr>
       <td><code>--sample_fraction</code></td>
       <td>
-        Fraction of patch area to sample (float). Default: <b>0.50</b> (20%).<br />Constraints: <code>0 &lt; f ≤ 0.6</code>.<br />The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.
+        Fraction of patch area to sample (float). Default: <b>0.50</b> (50%).<br />Constraints: <code>0 &lt; f ≤ 0.6</code>.<br />The sampling area is a centered square clamped to at least <b>3×3 px</b> and at most <b>60%</b> of patch size.
       </td>
     </tr>
 
@@ -141,12 +162,30 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
         <b>(Required)</b> Label sequence for rows. Must match <code>num_rows</code> exactly.<br />
         Allowed patterns:
         <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>1-15</code></td><td style="border: none;">Numeric range</td></tr>
-          <tr><td style="border: none;"><code>03-12</code></td><td style="border: none;">Numeric range (zero-padding preserved)</td></tr>
-          <tr><td style="border: none;"><code>0001-0120</code></td><td style="border: none;">Numeric range (zero-padding preserved)</td></tr>
-          <tr><td style="border: none;"><code>A-Z</code></td><td style="border: none;">Alphabetic range</td></tr>
-          <tr><td style="border: none;"><code>A-AC</code></td><td style="border: none;">Alphabetic range</td></tr>
-          <tr><td style="border: none;"><code>BQ-CF</code></td><td style="border: none;">Alphabetic range</td></tr>
+          <tr>
+          	<td style="border: none;"><code>1-15</code></td>
+          	<td style="border: none;">Numeric range</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>03-12</code></td>
+          	<td style="border: none;">Numeric range (zero-padding preserved)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>0001-0120</code></td>
+          	<td style="border: none;">Numeric range (zero-padding preserved)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>A-Z</code></td>
+          	<td style="border: none;">Alphabetic range</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>A-AC</code></td>
+          	<td style="border: none;">Alphabetic range</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>BQ-CF</code></td>
+          	<td style="border: none;">Alphabetic range</td>
+          </tr>
         </table>
       </td>
     </tr>
@@ -159,19 +198,88 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
     <tr>
       <td><code>--patch_label_order</code></td>
       <td>
-        <b>(Required)</b> Determines patch label composition:<br />
-        (Examples assume row_labels are numeric and col_labels are alphabetic)
+        <b>(Required)</b> Determines patch label composition. <code>col</code> refer here to the defined <code>col_labels</code>, and <code>row</code>  to the defined <code>row_labels</code>. The patch label order is independent of the specified <code>output_order</code>.<br /><br /> Examples, assuming <code>row_labels</code> are numeric and <code>col_labels</code> are alphabetic:
         <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>col_then_row</code></td><td style="border: none;">→ e.g. <code>A12</code></td></tr>
-          <tr><td style="border: none;"><code>row_then_col</code></td><td style="border: none;">→ e.g. <code>12A</code></td></tr>
+          <tr>
+          	<td style="border: none;"><code>col_then_row</code></td>
+          	<td style="border: none;">→ e.g. <code>A12</code></td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>row_then_col</code></td>
+          	<td style="border: none;">→ e.g. <code>12A</code></td>
+          </tr>
         </table>
+      </td>
+    </tr>
+    
+    <tr>
+      <td><code>--output_order</code></td>
+      <td>
+        Determines initial traversal order, i.e. how the grid shall be read when converting to the output-list of color data. Traversal always starts at top-left corner patch in the grid. Serves as basis before rotation/mirroring:
+        <table style="border-collapse: collapse; border: none;">
+          <tr>
+          	<td style="border: none;"><code>row_major</code><i>(default)</i></td>
+          	<td style="border: none;">→ iterate row by row (top→bottom, then left→right)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>column_major</code></td>
+          	<td style="border: none;">→ iterate column by column (left→right, then top→bottom)</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td><code>--mirror_output</code></td>
+      <td>
+        Reverse traversal <b>after</b> <code>output_order</code> and <code>rotate_grid</code>. Only applied if specified:
+        <table style="border-collapse: collapse; border: none;">
+          <tr>
+          	<td style="border: none;">output_order setting:</td>
+          	<td style="border: none;"></td>
+          </tr>
+          <tr>
+          	<td style="border: none;">If <code>row_major</code></td>
+          	<td style="border: none;">→ reverse column values for each row (vertical flip)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;">If <code>column_major</code></td>
+          	<td style="border: none;">→ reverse row values for each column (horizontal flip)</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td><code>--rotate_grid</code></td>
+      <td>
+        Rotate the entire patch grid <b>clockwise</b> before mirroring (if <code>mirror_output</code> applied). Allowed values:
+        <table style="border-collapse: collapse; border: none;">
+          <tr>
+          	<td style="border: none;"><code>0</code></td>
+          	<td style="border: none;"><i>(default)</i></td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>90</code></td>
+          	<td style="border: none;">→ rotate 90° CW</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>180</code></td>
+          	<td style="border: none;">→ rotate 180° CW</td>
+          </tr>
+          <tr>
+          	<td style="border: none;"><code>270</code></td>
+          	<td style="border: none;">→ rotate 270° CW</td>
+          </tr>
+        </table>
+        Applied <b>after output_order</b>, <b>before mirror_output</b>.
       </td>
     </tr>
 
     <tr>
       <td><code>--output_color_space</code></td>
       <td>
-        <b>(Required)</b> Comma-separated list specifying which colour spaces to output (in order). Allowed tokens:<br />
+        <b>(Required)</b> Comma-separated list specifying which color spaces to output (in order). Allowed tokens:<br />
         • <code>RGB</code><br />
         • <code>XYZ</code><br />
         • <code>LAB</code><br />
@@ -198,7 +306,7 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
         Patch sampling aggregation method:<br />
 			<table style="border-collapse: collapse; border: none;">
 			  <tr>
-			    <td style="border: none;"><code>mad <i>(default)</i></code></td>
+			    <td style="border: none;"><code>mad</code><i>(default)</i></td>
 			    <td style="border: none;">→ robust mean via MAD-based sigma clipping</td>
 			  </tr>
 			  <tr>
@@ -214,51 +322,23 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
     </tr>
 
     <tr>
-      <td><code>--output_order</code></td>
-      <td>
-        Determines initial traversal order before rotation/mirroring, if applied:
-        <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">→ iterate row by row (top→bottom, left→right)</td></tr>
-          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">→ iterate column by column (left→right, top→bottom)</td></tr>
-        </table>
-      </td>
-    </tr>
-
-    <tr>
-      <td><code>--mirror_output</code></td>
-      <td>
-        Reverse traversal <b>after</b> <code>output_order</code> and <code>rotate_grid</code>:
-        <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>row_major</code></td><td style="border: none;">→ reverse column labels for each row (vertical flip)</td></tr>
-          <tr><td style="border: none;"><code>column_major</code></td><td style="border: none;">→ reverse row labels for each column (horizontal flip)</td></tr>
-        </table>
-      </td>
-    </tr>
-
-    <tr>
-      <td><code>--rotate_grid</code></td>
-      <td>
-        Rotate the entire patch grid <b>clockwise</b> before mirroring (if <code>mirror_output</code> applied). Allowed values:
-        <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;"><code>0</code></td><td style="border: none;">(default)</td></tr>
-          <tr><td style="border: none;"><code>90</code></td><td style="border: none;">→ rotate 90° CW</td></tr>
-          <tr><td style="border: none;"><code>180</code></td><td style="border: none;">→ rotate 180° CW</td></tr>
-          <tr><td style="border: none;"><code>270</code></td><td style="border: none;">→ rotate 270° CW</td></tr>
-        </table>
-        Applied <b>after output_order</b>, <b>before mirror_output</b>.
-      </td>
-    </tr>
-
-    <tr>
       <td><code>--output</code></td>
       <td>
         Base filename and/or path for generated <code>.ti1</code>, <code>.ti2</code>, and <code>.csv</code> output files.<br />
-        If omitted, filenames are based on the input image name and placed in the same folder as the script. If path is specified, the script will place all output files. If the specified path also includes a filename, the script will use that filename for all output files.
+        If omitted, filenames are based on the input image name and placed in the same folder as the script. If path is specified, the script will place all output files in path. If the specified path also includes a filename, the script will use that filename for all output files.
         <table style="border-collapse: collapse; border: none;">
-          <tr><td style="border: none;">--output "./Outputfolder/"</td><td style="border: none;">Only directory, current folder is reference (keep input image name)</td></tr>
-          <tr><td style="border: none;">--output "./Outputfolder/Outputfilename"</td><td style="border: none;">Directory + filename, current folder is reference (override input image name)</td></tr>
-          <tr><td style="border: none;">--output "User/Username/ Outputfolder/Outputfilename"</td><td style="border: none;">Directory + filename (override input image name)</td></tr>
-          <tr><td style="border: none;">--output "../Outputfolder/"</td><td style="border: none;">Directory in parallel folder, one up in structure (keep input image name)</td></tr>
+          <tr>
+          	<td style="border: none;">--output "./Outputfolder/"</td><td style="border: none;">Only directory, current folder is reference (keep input image name)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;">--output "./Outputfolder/ Outputfilename"</td><td style="border: none;">Directory + filename, current folder is reference (override input image name)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;">--output "User/Username/ Outputfolder/Outputfilename"</td><td style="border: none;">Directory + filename (override input image name)</td>
+          </tr>
+          <tr>
+          	<td style="border: none;">--output "../Outputfolder/"</td><td style="border: none;">Directory in parallel folder, one up in structure (keep input image name)</td>
+          </tr>
         </table>
       </td>
     </tr>
@@ -272,8 +352,18 @@ Several examples of generating an ArgyllCMS printtarg targets for SpyderPrint Ta
 </table>
 
 
-
 # Image Input
+It is expected that the image:
+
+- uses D50 illuminant as the reference white point.
+- is stored as an RGB image with linear, device-independent color space.
+
+The argument `--pre_cond_profile` is set to sRGB color space profile as default, which generates XYZ and LAB colors adapted to this profile with D50 reference white. RGB values are unaffected.
+
+Currently, the output `.ti1` file from this script is hard coded with COLOR_REP=iRGB, assuming that the intended printer used prints RGB (additive), but behind the driver is a subtractive CMYK printer (corresponding to ArgyllCMS targen argument `-d2`).
+
+It is possible to read images with other white points and apply any other color space encoding, but the output `.ti1` and `.ti2` files will reflect this. If the color values are acceptable, the `.ti1` may still be used with ArgyllCMS printtarg to generate targets, but the `.ti2` will probably not be usable in calibration workflows together with the read image.
+
 Accepted image types: any PIL-compatible raster file
 Color depth: handled as 16-bit RGB internally
 
@@ -296,11 +386,11 @@ The script calculates patch center coordinates and boundaries.
 # Sampling
 Parameter: `--sample_fraction`
 Range: `0 < f ≤ 0.6`
-Defines fraction of the *smaller* patch dimension used for sampling.
+Defines the fraction of the *smaller* patch dimension used for sampling.
 
 Sampling modes (parameter `--sample_mode`):
 
-- mad    – robust mean using MAD-based sigma clipping (default)
+- mad    – robust mean using MAD-based sigma clipping <i>(default)</i>
 - mean   – plain arithmetic mean (sensitive to outliers)
 - median – pure median (very robust, but may bias bright/dark values)
 
@@ -347,8 +437,7 @@ Lab output:
 - Absolute colorimetric intent
 - L in range ~0..100, a and b range typical -128..128.
 - Numeric precision: six decimal places.
-
-- All colorimetric output is **D50** and **linear** (no gamma applied in XYZ or Lab).
+- All colorimetric output is **D50**.
 
 The patch with the highest Y (XYZ_Y) is stored as APPROX\_WHITE\_POINT. 
 Note that XYZ Absolute colorimetric D50 is almost identical to XYZ Relative colorimetric D65, which can confuse some users to think that the APPROX\_WHITE\_POINT is computed using D65. This is not the case.
@@ -379,7 +468,7 @@ Contains:
 Tags containing a dynamically calculated number are omitted if 0 (zero).
 
 #### COMP\_GREY\_STEPS
-Number represents count of patches with equal RGB channel values, basically neutral colors. Note: This is not the NEUTRAL_STEPS tag, as they would be generated by ArgyllCMS targen taking into acount the neutral axis for a given icc profile. This script does not support creating NEUTRAL_STEPS count.
+Number represents count of patches with equal RGB channel values, basically neutral colors. Note: This is not the NEUTRAL\_STEPS tag, as they would be generated by ArgyllCMS targen taking into acount the neutral axis for a given icc profile. This script does not support creating NEUTRAL\_STEPS count.
 
 RGB Balance Check:<br>
 
@@ -422,8 +511,8 @@ Space-separated table with SAMPLE\_ID, SAMPLE\_LOC, and selected color values.
 # Patch Value Ranges
 RGB: 0–100<br>
 XYZ: typically 0–100<br>
-Lab_L: 0–100<br>
-Lab_a/b: approx. –128 to +128<br>
+Lab\_L: 0–100<br>
+Lab\_a/b: approx. –128 to +128<br>
 
 All values have six decimal places.
 
@@ -448,7 +537,7 @@ Order controls column order in TI1/TI2/CSV.
 - This script seeks to minimize rounding/quantization error:
   * If the image has 16-bit/channel data it will be used directly.
   * If the image is 8-bit/channel (most typical images), it will be scaled up
-    exactly to 16-bit (value * 257) before colour conversion to reduce rounding
+    exactly to 16-bit (value * 257) before color conversion to reduce rounding
     / mapping error in conversions.
   * Conversion from RGB -> XYZ -> Lab is done using ArgyllCMS xicclu with
   precision floats; XYZ is scaled so Yn = 100 and written with 6 decimal places.
@@ -460,14 +549,14 @@ Order controls column order in TI1/TI2/CSV.
 # Patch Sampling Method
 For each patch:
 
-1. Patch centre (Cx, Cy) is computed by linear interpolation between
-   patch_first_xy → patch_last_xy across the grid.
+1. Patch center (Cx, Cy) is computed by linear interpolation between
+   patch\_first\_xy → patch\_last\_xy across the grid.
 2. A square sampling region of size `sample_size × sample_size`
-   (odd number, min 3, max 60% of patch) is centred at (Cx, Cy).
+   (odd number, min 3, max 60% of patch) is centered at (Cx, Cy).
 3. The script extracts all pixels inside this region.
 4. The sampled RGB values are averaged (MAD-based sigma) in 16-bit integer 
 	space (8-bit inputs are scaled to 16-bit via *257).
-5. Colour conversions are applied using xicclu:
+5. Color conversions are applied using xicclu:
       - RGB -> CIEXYZ XYZ (D50) 
       - RGB -> Lab (D50)
 
@@ -490,7 +579,7 @@ INDEX_ORDER "STRIP_THEN_PATCH"
 
 NUMBER_OF_FIELDS <AAA>
 BEGIN_DATA_FORMAT
-SAMPLE_ID SAMPLE_LOC [colour fields...]
+SAMPLE_ID SAMPLE_LOC [color fields...]
 END_DATA_FORMAT
 
 NUMBER_OF_SETS <BBB>
@@ -499,13 +588,21 @@ BEGIN_DATA
   ...
 END_DATA
 ```
+Where:
+
+- SAMPLE\_ID is the numeric row-major patch index starting at 1
+- SAMPLE\_LOC is the label, e.g. "A5" or "15C"
+- AAA = number of fields (depends on output\_color\_space)
+- BBB = number of patches (num\_rows × num\_cols)
+- ROWS = number of rows (num\_rows)
+- COLS = number of columns (num\_cols)
 
 Fields appear in the order defined by `output_color_space`.
 
 Examples:
 
-- `RGB,XYZ` → RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z
-- `LAB` → LAB_L LAB_A LAB_B
+- `RGB,XYZ` → RGB\_R RGB\_G RGB\_B XYZ\_X XYZ\_Y XYZ\_Z
+- `LAB` → LAB\_L LAB\_A LAB\_B
 
 
 # Error Conditions
@@ -513,7 +610,7 @@ Use `--debug` flag to investigate issues relating to color on patches.
 
 Script stops if:
 
-- Coordinates and Row/Column numbers cause measurement areas to be missaligned with patch centres of the target image.
+- Coordinates and Row/Column numbers cause measurement areas to be missaligned with patch centers of the target image.
 - Labels do not match row/column counts
 - Output color space tokens are invalid
 - sample_fraction exceeds allowed range
@@ -537,7 +634,7 @@ Script stops if:
 
 # Examples
 ## 9×12 SpyderPrint target with numeric rows, alphabetic columns
-```
+```bash
 python3 read_image_patch_colors.py \
   --image "EZ 729 Colors Plus Grays 1 of 9 (108-patches).tif" \
   --patch_first_xy 111,64 \
@@ -551,7 +648,7 @@ python3 read_image_patch_colors.py \
   --output_color_space RGB,XYZ
 ```
 ## 10×12 SpyderPrint target with numeric rows, alphabetic columns
-```
+```bash
 python3 read_image_patch_colors.py \
   --image "EZ 729 Colors Plus Grays 8 of 9 (120-patches).tif" \
   --patch_first_xy 87,67 \
@@ -613,7 +710,8 @@ python3 read_image_patch_colors.py \
 ## 27×27 SpyderPrint target with numeric rows, alphabetic columns
 **Note!**<br>
 This image uses a special character on last column label, which must be manually changed in the ti2 file.
-```
+
+```bash
 python3 read_image_patch_colors.py \
   --image "Expert Target (large)(729-patches).tif" \
   --patch_first_xy 72,51 \
@@ -627,7 +725,7 @@ python3 read_image_patch_colors.py \
   --output_color_space RGB,XYZ
 ```
 ## 36×26 LaserSoft target with numeric rows, alphabetic columns
-```
+```bash
 python3 read_image_patch_colors.py \
   --image "LaserSoft Advanced ISO12641-2 Target (864-patches).tif" \
   --patch_first_xy 168,168 \

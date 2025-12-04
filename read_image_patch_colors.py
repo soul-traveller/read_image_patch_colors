@@ -848,94 +848,73 @@ def rgb16_to_argyll_percent(rgb16: Sequence[float]) -> Tuple[float, float, float
     return float(rgb16[0] * factor), float(rgb16[1] * factor), float(rgb16[2] * factor)
 
 
-def parse_xicclu_output(text: str):
+def parse_xicclu_output(text: str) -> List[Tuple[float, float, float]]:
     """
-    Bulletproof parser for xicclu output.
-
-    Strategy:
-      • For each non-empty line:
-          - Find *all* float-triplets in the line
-          - Use the LAST triplet (this is always XYZ or LAB)
-      • Return list of 3-tuples of floats
-
-    If debug=True, prints how each line is parsed.
+    Parse xicclu output with -v0 flag, which provides clean triplet output.
+    
+    Returns:
+        List of 3-tuples of floats
     """
-
     results = []
-
-    if DEBUG:
-        print(f"\n\nConfirming filtering of output from xicclu in parse_xicclu_output:")
-
+    
     for line in text.splitlines():
-        raw_line = line.rstrip("\n")
-        line = raw_line.strip()
-
+        line = line.strip()
         if not line:
             continue
-
-        # Find ALL 3-float sequences
-        triples = TRIPLE_RE.findall(line)
-
-        if not triples:
-            if DEBUG:
-                print(f"[SKIP] No triples found in line: '{raw_line}'")
-            continue
-
-        # Use LAST triple
-        trip = triples[-1]
-
-        parts = trip.split()
-        if len(parts) != 3:
-            if DEBUG:
-                print(f"[SKIP] Invalid triple: '{trip}' in line: '{raw_line}'")
-            continue
-
-        tup = tuple(map(float, parts))
-        results.append(tup)
-
-        if DEBUG:
-            print(f"[OK] {tup}  ← from: '{raw_line}'")
-
+            
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                results.append(tuple(map(float, parts)))
+            except ValueError:
+                continue
+                
     return results
 
 
-def convert_color_batch(rgb_percent_list, icc_profile_path):
+def convert_color_batch(rgb_percent_list: List[Tuple[float, float, float]], 
+                      icc_profile_path: str) -> Tuple[List[Tuple[float, float, float]], 
+                                                     List[Tuple[float, float, float]]]:
     """
     Batch-convert a list of RGB percentages into XYZ and Lab using xicclu,
     with only one subprocess call for XYZ and one for Lab.
 
-    rgb_percent_list: list of (R,G,B) floats 0..100
+    Args:
+        rgb_percent_list: list of (R,G,B) floats 0..100
+        icc_profile_path: path to ICC profile
+
     Returns:
         xyz_list: list of (X,Y,Z)
         lab_list: list of (L,a,b)
     """
-
-    # ------------------------------------------------
     # Build xicclu input block
-    # ------------------------------------------------
     xicclu_input = "\n".join(
         f"{rgb[0]} {rgb[1]} {rgb[2]}" for rgb in rgb_percent_list
     ) + "\n\n"
 
-    # ------------------------------------------------
-    # Run xicclu for XYZ (use -i a = absolute colorimetric intent with D50, same as targen does)
-    # ------------------------------------------------
-    cmd_xyz = ["xicclu", "-ff", "-ia", "-s100", "-pX", icc_profile_path]
+    # Common xicclu arguments (use -i a = absolute colorimetric intent with D50, same as targen does)
+    common_args = ["-ff", "-ia", "-s100", "-v0"]  # Added -v0 for clean output
+
+    # Run xicclu for XYZ
+    cmd_xyz = ["xicclu", *common_args, "-pX", icc_profile_path]
     out_xyz = subprocess.run(
-        cmd_xyz, input=xicclu_input, capture_output=True, text=True
+        cmd_xyz, 
+        input=xicclu_input, 
+        capture_output=True, 
+        text=True
     ).stdout
 
-    # ------------------------------------------------
-    # Run xicclu for Lab (use -i a = absolute colorimetric intent with D50, same as targen does)
-    # ------------------------------------------------
-    cmd_lab = ["xicclu", "-ff", "-ia", "-s100", "-pl", icc_profile_path]
+    # Run xicclu for Lab
+    cmd_lab = ["xicclu", *common_args, "-pl", icc_profile_path]
     out_lab = subprocess.run(
-        cmd_lab, input=xicclu_input, capture_output=True, text=True
+        cmd_lab, 
+        input=xicclu_input, 
+        capture_output=True, 
+        text=True
     ).stdout
 
-    # Parse XYZ
+    # Parse results
     xyz_list = parse_xicclu_output(out_xyz)
-    # Parse Lab
     lab_list = parse_xicclu_output(out_lab)
 
     if len(xyz_list) != len(rgb_percent_list) or len(lab_list) != len(rgb_percent_list):
@@ -1112,6 +1091,103 @@ def sample_patch(img16: np.ndarray, cx: float, cy: float, half: int, sample_mode
     return avg_rgb16
 
 
+def apply_grid_operations(
+    patches: List[PatchInfo], 
+    geometry: GridGeometry, 
+    rotate_grid: int, 
+    mirror_output: bool, 
+    is_row_major: bool
+) -> Tuple[List[PatchInfo], List[Tuple[float, float, float]], List[int]]:
+    """Apply rotation and mirroring operations to patch colors while preserving indices and labels.
+    
+    Args:
+        patches: List of PatchInfo objects
+        geometry: Grid geometry information
+        rotate_grid: Rotation angle in degrees (0, 90, 180, 270)
+        mirror_output: Whether to mirror the grid
+        is_row_major: If True, use row-major order; if False, use column-major
+        
+    Returns:
+        Tuple of (modified patches, modified rgb_percent_list, index_mapping)
+    """
+    # Create new PatchInfo objects
+    new_patches = [
+        PatchInfo(
+            index=p.index,
+            label=p.label,
+            rgb16=p.rgb16.copy(),
+            rgb_percent=p.rgb_percent,
+            xyz100=p.xyz100,
+            lab=p.lab
+        ) for p in patches
+    ]
+    
+    # Extract color data
+    rgb16_data = np.array([p.rgb16 for p in new_patches])
+    rgb_percent_data = np.array([p.rgb_percent for p in new_patches])
+    
+    # Reshape based on grid order
+    if is_row_major:
+        # For row-major, shape is (num_rows, num_cols, 3)
+        shape = (geometry.num_rows, geometry.num_cols, 3)
+        rgb16_data = rgb16_data.reshape(shape)
+        rgb_percent_data = rgb_percent_data.reshape(shape)
+        index_grid = np.arange(len(patches)).reshape(shape[:2])
+        
+        # Apply rotation Clockwise (CW)
+        if rotate_grid != 0:
+            k = rotate_grid // 90
+            rgb16_data = np.rot90(rgb16_data, k=-k, axes=(0, 1))
+            rgb_percent_data = np.rot90(rgb_percent_data, k=-k, axes=(0, 1))
+            index_grid = np.rot90(index_grid, k=-k, axes=(0, 1))
+            
+        # Apply mirroring (flip columns within each row)
+        if mirror_output:
+            rgb16_data = np.flip(rgb16_data, axis=1)  # Flip columns
+            rgb_percent_data = np.flip(rgb_percent_data, axis=1)
+            index_grid = np.flip(index_grid, axis=1)
+            
+    else:  # column-major
+        # For column-major, shape is (num_cols, num_rows, 3)
+        shape = (geometry.num_cols, geometry.num_rows, 3)
+        rgb16_data = rgb16_data.reshape(geometry.num_rows, geometry.num_cols, 3).transpose(1, 0, 2)
+        rgb_percent_data = rgb_percent_data.reshape(geometry.num_rows, geometry.num_cols, 3).transpose(1, 0, 2)
+        index_grid = np.arange(len(patches)).reshape(geometry.num_rows, geometry.num_cols).T
+        
+        # Apply rotationClockwise (CW)
+        if rotate_grid != 0:
+            k = rotate_grid // 90
+            rgb16_data = np.rot90(rgb16_data, k=-k, axes=(0, 1))
+            rgb_percent_data = np.rot90(rgb_percent_data, k=-k, axes=(0, 1))
+            index_grid = np.rot90(index_grid, k=-k, axes=(0, 1))
+            
+        # Apply mirroring (flip rows within each column)
+        if mirror_output:
+            rgb16_data = np.flip(rgb16_data, axis=0)  # Flip rows
+            rgb_percent_data = np.flip(rgb_percent_data, axis=0)
+            index_grid = np.flip(index_grid, axis=0)
+        
+        # Convert back to row-major for flattening
+        rgb16_data = rgb16_data.transpose(1, 0, 2)
+        rgb_percent_data = rgb_percent_data.transpose(1, 0, 2)
+        index_grid = index_grid.T
+    
+    # Flatten the data
+    rgb16_flat = rgb16_data.reshape(-1, 3)
+    rgb_percent_flat = rgb_percent_data.reshape(-1, 3)
+    index_mapping = index_grid.flatten().tolist()
+    
+    # Update patches with new colors
+    for i, (rgb16, rgb_percent) in enumerate(zip(rgb16_flat, rgb_percent_flat)):
+        new_patches[i].rgb16 = rgb16
+        new_patches[i].rgb_percent = tuple(rgb_percent)
+    
+    # Convert rgb_percent_flat to list of tuples
+    rgb_percent_list = [tuple(rgb) for rgb in rgb_percent_flat]
+    
+    return new_patches, rgb_percent_list, index_mapping
+
+
 # Extract measurements for all patches in the grid.
 # Traverses the patch grid either row-major (default: row by row) or column-major (column by column),
 # optionally reversing the order of patches per row (row-major) or per column (column-major) if mirror_output=True.
@@ -1157,6 +1233,8 @@ def extract_patch_data(
     rgb_percent_list = []
     # mapping from patch label to its RGB index in rgb_percent_list
     rgb_index_by_label = {}
+    # Initialize index_mapping as identity mapping
+    index_mapping = list(range(total_patches))
 
     # ------------------------------------------------------
     # ROW-MAJOR ORDER
@@ -1218,34 +1296,6 @@ def extract_patch_data(
                     )
                 )
 
-        # ----- Rotate grid before mirroring -----
-        if rotate_grid != 0:
-            # After building patches, reshape into 2D grid
-            patch_grid = np.array(patches, dtype=object).reshape((geometry.num_rows, geometry.num_cols))
-            # Apply rotation
-            k = rotate_grid // 90  # np.rot90 rotates clockwise
-            patch_grid = np.rot90(patch_grid, k=k)
-            # Flatten back to list in row-major order
-            patches = patch_grid.flatten().tolist()
-            # Update indices
-            for i, p in enumerate(patches, start=1):
-                p.index = i
-
-        # ------------------------------------------------------
-        # Row-based mirroring
-        # ------------------------------------------------------
-        if mirror_output:
-            mirrored = []
-            for r in range(geometry.num_rows):
-                start = r * geometry.num_cols
-                end = start + geometry.num_cols
-                row_patches = patches[start:end]
-                mirrored.extend(row_patches[::-1])
-            patches = mirrored
-
-            for i, p in enumerate(patches, start=1):
-                p.index = i
-
     # ------------------------------------------------------
     # COLUMN-MAJOR ORDER
     # ------------------------------------------------------
@@ -1295,36 +1345,27 @@ def extract_patch_data(
                     )
                 )
 
-        # ----- Rotate grid before mirroring -----
-        if rotate_grid != 0:
-            # After building patches, reshape into 2D grid
-            patch_grid = np.array(patches, dtype=object).reshape((geometry.num_rows, geometry.num_cols))
-            # Apply rotation
-            k = rotate_grid // 90  # np.rot90 rotates counter-clockwise
-            patch_grid = np.rot90(patch_grid, k=k)
-            # Flatten back to list in column-major order
-            patches = patch_grid.flatten().tolist()
-            # Update indices
-            for i, p in enumerate(patches, start=1):
-                p.index = i
+    # ------------------------------------------------------
+    # Apply grid operations (rotation and mirroring)
+    # ------------------------------------------------------
+    print(f"\n\nApplying grid operations: rotate={rotate_grid}, mirror={mirror_output}, order={output_order}")
+    if rotate_grid != 0 or mirror_output:
+        patches, rgb_percent_list, index_mapping = apply_grid_operations(
+            patches, 
+            geometry, 
+            rotate_grid, 
+            mirror_output, 
+            is_row_major = True if output_order == "row_major" else False
+        )
 
-        # ------------------------------------------------------
-        # Column-major mirroring (per column)
-        # ------------------------------------------------------
-        if mirror_output:
-            mirrored = []
-            for c in range(geometry.num_cols):
-                col_indices = range(c * geometry.num_rows, (c + 1) * geometry.num_rows)
-                col_patches = [patches[i] for i in col_indices]
-                mirrored.extend(col_patches[::-1])  # vertical flip
-            patches = mirrored
-
-            for i, p in enumerate(patches, start=1):
-                p.index = i
+    # Update rgb_index_by_label to reflect the new order
+    for i, p in enumerate(patches):
+        rgb_index_by_label[p.label] = i
 
     # ------------------------------------------------------
     # FINAL STEP: batch-convert all RGB% values using xicclu
     # ------------------------------------------------------
+    # Now convert colors using the transformed rgb_percent_list
     xyz_list, lab_list = convert_color_batch(rgb_percent_list, pre_cond_profile)
 
     if len(xyz_list) != len(patches):
