@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 read_image_patch_colors.py
-Version: 1.5.0
+Version: 1.5.4
 
 ================================================================================
 READ_IMAGE_PATCH_COLORS.PY — DOCUMENTATION
