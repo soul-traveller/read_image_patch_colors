@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 read_image_patch_colors.py
-Version: 1.5.4
+Version: 1.5.5
 
 ================================================================================
 READ_IMAGE_PATCH_COLORS.PY — DOCUMENTATION
@@ -491,6 +491,7 @@ import platform
 import subprocess
 import shutil
 import importlib.util
+from scipy.optimize import minimize
 from dataclasses import dataclass
 from typing import List, Tuple, Sequence, Optional
 
@@ -507,8 +508,9 @@ def check_full_packages() -> list[str]:
         missing.append("ArgyllCMS (xicclu not found in PATH)")
 
     # 2. Check Python packages
-    if importlib.util.find_spec("numpy") is None:
-        missing.append("numpy")
+    for pkg in ["numpy", "scipy"]:
+        if importlib.util.find_spec(pkg) is None:
+            missing.append(pkg)
 
     # Pillow must be checked via PIL.Image, not PIL
     if importlib.util.find_spec("PIL.Image") is None:
@@ -579,17 +581,6 @@ TRIPLE_RE = re.compile(rf"({FLOAT_RE}\s+{FLOAT_RE}\s+{FLOAT_RE})")
 # ------------------------------------------------
 # RGB lists (0..100, as floats)
 # ------------------------------------------------
-density_extr_val_list = [
-    (0.00000, 49.99527, 43.75000),
-    (0.00000, 50.00123, 50.00000),
-    (0.00000, 40.08532, 59.90998),
-    (0.00000, 0.00000, 78.36374),
-    (30.55980, 50.01120, 0.00000),
-    (0.00000, 32.57137, 0.00000),
-    (100.0000, 0.00000, 0.00000),
-    (0.00000, 0.00000, 21.87299),
-]
-
 device_combi_val_list = [
     (100.0000, 100.0000, 100.0000),
     (0.00000, 100.0000, 100.0000),
@@ -851,29 +842,29 @@ def rgb16_to_argyll_percent(rgb16: Sequence[float]) -> Tuple[float, float, float
 def parse_xicclu_output(text: str) -> List[Tuple[float, float, float]]:
     """
     Parse xicclu output with -v0 flag, which provides clean triplet output.
-    
+
     Returns:
         List of 3-tuples of floats
     """
     results = []
-    
+
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
-            
+
         parts = line.split()
         if len(parts) == 3:
             try:
                 results.append(tuple(map(float, parts)))
             except ValueError:
                 continue
-                
+
     return results
 
 
-def convert_color_batch(rgb_percent_list: List[Tuple[float, float, float]], 
-                      icc_profile_path: str) -> Tuple[List[Tuple[float, float, float]], 
+def convert_color_batch(rgb_percent_list: List[Tuple[float, float, float]],
+                      icc_profile_path: str) -> Tuple[List[Tuple[float, float, float]],
                                                      List[Tuple[float, float, float]]]:
     """
     Batch-convert a list of RGB percentages into XYZ and Lab using xicclu,
@@ -886,41 +877,60 @@ def convert_color_batch(rgb_percent_list: List[Tuple[float, float, float]],
     Returns:
         xyz_list: list of (X,Y,Z)
         lab_list: list of (L,a,b)
+
+    Raises:
+        ValueError: If the profile is not supported or if there's an error in conversion
     """
     # Build xicclu input block
     xicclu_input = "\n".join(
         f"{rgb[0]} {rgb[1]} {rgb[2]}" for rgb in rgb_percent_list
     ) + "\n\n"
 
+    def run_xicclu(cmd: list[str], input_data: str) -> str:
+        """Run xicclu command and handle errors."""
+        result = subprocess.run(
+            cmd,
+            input=input_data,
+            capture_output=True,
+            text=True
+        )
+        
+        # Check for ICC V4 error or other xicclu errors
+        if "V4 not supported" in result.stderr or "Error" in result.stderr:
+            error_msg = result.stderr.strip()
+            if "V4 not supported" in error_msg:
+                error_msg = ("ICC Version 4 profiles are not supported by xicclu. "
+                           "Please use an ICC v2 profile instead.")
+            raise ValueError(f"xicclu error: {error_msg}")
+            
+        if result.returncode != 0:
+            raise ValueError(f"xicclu failed with return code {result.returncode}: {result.stderr.strip()}")
+            
+        return result.stdout
+
     # Common xicclu arguments (use -i a = absolute colorimetric intent with D50, same as targen does)
     common_args = ["-ff", "-ia", "-s100", "-v0"]  # Added -v0 for clean output
 
-    # Run xicclu for XYZ
-    cmd_xyz = ["xicclu", *common_args, "-pX", icc_profile_path]
-    out_xyz = subprocess.run(
-        cmd_xyz, 
-        input=xicclu_input, 
-        capture_output=True, 
-        text=True
-    ).stdout
+    try:
+        # Run xicclu for XYZ
+        cmd_xyz = ["xicclu", *common_args, "-pX", icc_profile_path]
+        out_xyz = run_xicclu(cmd_xyz, xicclu_input)
 
-    # Run xicclu for Lab
-    cmd_lab = ["xicclu", *common_args, "-pl", icc_profile_path]
-    out_lab = subprocess.run(
-        cmd_lab, 
-        input=xicclu_input, 
-        capture_output=True, 
-        text=True
-    ).stdout
+        # Run xicclu for Lab
+        cmd_lab = ["xicclu", *common_args, "-pl", icc_profile_path]
+        out_lab = run_xicclu(cmd_lab, xicclu_input)
 
-    # Parse results
-    xyz_list = parse_xicclu_output(out_xyz)
-    lab_list = parse_xicclu_output(out_lab)
+        # Parse results
+        xyz_list = parse_xicclu_output(out_xyz)
+        lab_list = parse_xicclu_output(out_lab)
 
-    if len(xyz_list) != len(rgb_percent_list) or len(lab_list) != len(rgb_percent_list):
-        raise ValueError("Parsed xicclu batch results do not match input count.")
+        if len(xyz_list) != len(rgb_percent_list) or len(lab_list) != len(rgb_percent_list):
+            raise ValueError("Parsed xicclu batch results do not match input count.")
 
-    return xyz_list, lab_list
+        return xyz_list, lab_list
+        
+    except FileNotFoundError:
+        raise ValueError("xicclu command not found. Please ensure ArgyllCMS is installed and in your PATH.")
 
 
 def build_patch_records(rgb_percent_list, icc_profile_path):
@@ -1092,21 +1102,21 @@ def sample_patch(img16: np.ndarray, cx: float, cy: float, half: int, sample_mode
 
 
 def apply_grid_operations(
-    patches: List[PatchInfo], 
-    geometry: GridGeometry, 
-    rotate_grid: int, 
-    mirror_output: bool, 
+    patches: List[PatchInfo],
+    geometry: GridGeometry,
+    rotate_grid: int,
+    mirror_output: bool,
     is_row_major: bool
 ) -> Tuple[List[PatchInfo], List[Tuple[float, float, float]], List[int]]:
     """Apply rotation and mirroring operations to patch colors while preserving indices and labels.
-    
+
     Args:
         patches: List of PatchInfo objects
         geometry: Grid geometry information
         rotate_grid: Rotation angle in degrees (0, 90, 180, 270)
         mirror_output: Whether to mirror the grid
         is_row_major: If True, use row-major order; if False, use column-major
-        
+
     Returns:
         Tuple of (modified patches, modified rgb_percent_list, index_mapping)
     """
@@ -1121,11 +1131,11 @@ def apply_grid_operations(
             lab=p.lab
         ) for p in patches
     ]
-    
+
     # Extract color data
     rgb16_data = np.array([p.rgb16 for p in new_patches])
     rgb_percent_data = np.array([p.rgb_percent for p in new_patches])
-    
+
     # Reshape based on grid order
     if is_row_major:
         # For row-major, shape is (num_rows, num_cols, 3)
@@ -1133,58 +1143,58 @@ def apply_grid_operations(
         rgb16_data = rgb16_data.reshape(shape)
         rgb_percent_data = rgb_percent_data.reshape(shape)
         index_grid = np.arange(len(patches)).reshape(shape[:2])
-        
+
         # Apply rotation Clockwise (CW)
         if rotate_grid != 0:
             k = rotate_grid // 90
             rgb16_data = np.rot90(rgb16_data, k=-k, axes=(0, 1))
             rgb_percent_data = np.rot90(rgb_percent_data, k=-k, axes=(0, 1))
             index_grid = np.rot90(index_grid, k=-k, axes=(0, 1))
-            
+
         # Apply mirroring (flip columns within each row)
         if mirror_output:
             rgb16_data = np.flip(rgb16_data, axis=1)  # Flip columns
             rgb_percent_data = np.flip(rgb_percent_data, axis=1)
             index_grid = np.flip(index_grid, axis=1)
-            
+
     else:  # column-major
         # For column-major, shape is (num_cols, num_rows, 3)
         shape = (geometry.num_cols, geometry.num_rows, 3)
         rgb16_data = rgb16_data.reshape(geometry.num_rows, geometry.num_cols, 3).transpose(1, 0, 2)
         rgb_percent_data = rgb_percent_data.reshape(geometry.num_rows, geometry.num_cols, 3).transpose(1, 0, 2)
         index_grid = np.arange(len(patches)).reshape(geometry.num_rows, geometry.num_cols).T
-        
+
         # Apply rotationClockwise (CW)
         if rotate_grid != 0:
             k = rotate_grid // 90
             rgb16_data = np.rot90(rgb16_data, k=-k, axes=(0, 1))
             rgb_percent_data = np.rot90(rgb_percent_data, k=-k, axes=(0, 1))
             index_grid = np.rot90(index_grid, k=-k, axes=(0, 1))
-            
+
         # Apply mirroring (flip rows within each column)
         if mirror_output:
             rgb16_data = np.flip(rgb16_data, axis=0)  # Flip rows
             rgb_percent_data = np.flip(rgb_percent_data, axis=0)
             index_grid = np.flip(index_grid, axis=0)
-        
+
         # Convert back to row-major for flattening
         rgb16_data = rgb16_data.transpose(1, 0, 2)
         rgb_percent_data = rgb_percent_data.transpose(1, 0, 2)
         index_grid = index_grid.T
-    
+
     # Flatten the data
     rgb16_flat = rgb16_data.reshape(-1, 3)
     rgb_percent_flat = rgb_percent_data.reshape(-1, 3)
     index_mapping = index_grid.flatten().tolist()
-    
+
     # Update patches with new colors
     for i, (rgb16, rgb_percent) in enumerate(zip(rgb16_flat, rgb_percent_flat)):
         new_patches[i].rgb16 = rgb16
         new_patches[i].rgb_percent = tuple(rgb_percent)
-    
+
     # Convert rgb_percent_flat to list of tuples
     rgb_percent_list = [tuple(rgb) for rgb in rgb_percent_flat]
-    
+
     return new_patches, rgb_percent_list, index_mapping
 
 
@@ -1351,10 +1361,10 @@ def extract_patch_data(
     print(f"\n\nApplying grid operations: rotate={rotate_grid}, mirror={mirror_output}, order={output_order}")
     if rotate_grid != 0 or mirror_output:
         patches, rgb_percent_list, index_mapping = apply_grid_operations(
-            patches, 
-            geometry, 
-            rotate_grid, 
-            mirror_output, 
+            patches,
+            geometry,
+            rotate_grid,
+            mirror_output,
             is_row_major = True if output_order == "row_major" else False
         )
 
@@ -1686,6 +1696,53 @@ def CountSingleChannelRamps(patches, num_cols, num_rows):
     return most_common_steps
 
 
+def generate_density_extremes(patches, icc_profile_path, num_channels=3, uilimit=0.0):
+    """
+    Generate density extreme values similar to targen's DENSITY_EXTREME_VALUES.
+
+    Args:
+        patches: List of existing patch colors for reference
+        icc_profile_path: Path to ICC profile for xicclu color conversion
+        num_channels: Number of color channels (default: 3 for RGB/CMY)
+        uilimit: Ink limit as a fraction (0.0-1.0, default: 0.0 = no limit)
+
+    Returns:
+        List of 8 extreme color combinations with their XYZ values
+    """
+    # Define all RGB combinations (0-100 range) for density extreme values
+    density_extr_val_list = [
+        (100.0, 100.0, 100.0),   # White point
+        (0.0, 47.36069, 100.0),  # From targen 
+        (100.0, 0.0, 79.35138),  # From targen 
+        (0.0, 0.0, 58.99714),    # From targen 
+        (100.0, 66.65930, 0.0),  # From targen 
+        (0.0, 35.60114, 0.0),    # From targen 
+        (84.44436, 0.0, 0.0),    # From targen 
+        (0.0, 0.0, 0.0)          # Black point
+    ]
+    # Convert all RGB values to XYZ in one batch
+    try:
+        # Convert RGB to XYZ using xicclu
+        xyz_values, _ = convert_color_batch(density_extr_val_list, icc_profile_path)
+    except Exception as e:
+        print(f"Warning: Color conversion failed for DENSITY_EXTREME_VALUES. Fallback to gray output into ti1 file for DENSITY_EXTREME_VALUES table: {e}")
+        # Fallback to grayscale if conversion fails
+        xyz_values = [(sum(rgb)/3.0, sum(rgb)/3.0, sum(rgb)/3.0)
+                     for rgb in density_extr_val_list]
+
+    # Create the output records with 6 decimal places
+    density_extremes = []
+    for i, (rgb, xyz) in enumerate(zip(density_extr_val_list, xyz_values), 0):  # 1-based index
+        density_extremes.append((
+            i,  # 1-based index
+            tuple(round(v, 6) for v in rgb),  # RGB values (0-100) with 6 decimals
+            tuple(round(v, 6) for v in xyz),  # XYZ values (0-100) with 6 decimals
+            None  # Lab not needed
+        ))
+
+    return density_extremes
+
+
 # -------- File Writers --------
 class PatchFileWriter:
     """Abstract base class for writers that emit patch measurements to files.
@@ -1723,7 +1780,7 @@ class PatchFileWriter:
         self.num_cols = num_cols
         self.row_labels = row_labels
         self.col_labels = col_labels
-        self.density_extreme_records = density_extreme_records or []
+        self.density_extreme_records = density_extreme_records if density_extreme_records is not None else []
         self.device_combination_records = device_combination_records or []
 
     def write(self):
@@ -1797,6 +1854,7 @@ class TI1Writer(PatchFileWriter):
 
             # =========================================
             # Dynamic DENSITY_EXTREME_VALUES block
+            # Used by printtarg as contrast colors for spacers
             # =========================================
             fh.write("CTI1\n\n")
             fh.write('DESCRIPTOR "Argyll Calibration Target chart information 1"\n')
@@ -1810,7 +1868,8 @@ class TI1Writer(PatchFileWriter):
             fh.write("END_DATA_FORMAT\n\n")
             fh.write(f'NUMBER_OF_SETS "{len(self.density_extreme_records)}"\n')
             fh.write('BEGIN_DATA\n')
-            for idx, rgb, xyz, lab in self.density_extreme_records:
+            for record in self.density_extreme_records:
+                idx, rgb, xyz, _ = record
                 R, G, B = rgb
                 X, Y, Z = xyz
                 fh.write(
@@ -2027,11 +2086,9 @@ def process_image_to_files(args):
         args.rotate_grid
     )
 
-    # Build data for Density Extreme Values in TI1 file
-    density_extreme_records = build_patch_records(
-        density_extr_val_list,
-        pre_cond_profile
-    )
+    # Generate density extremes using the same I(patches, pre_cond_profile)
+    density_extremes = generate_density_extremes(patches, pre_cond_profile)
+
     # Build data for Device Combination Values in TI1 file
     device_combination_records = build_patch_records(
         device_combi_val_list,
@@ -2058,7 +2115,7 @@ def process_image_to_files(args):
             args.num_cols,
             row_labels,
             col_labels,
-            density_extreme_records=density_extreme_records,
+            density_extreme_records=density_extremes,
             device_combination_records=device_combination_records
         )
         writer.write()

@@ -24,6 +24,6 @@ python3 read_image_patch_colors.py \
   --output_color_space RGB,XYZ
 
 #Then use the .ti1 file with printtarg. Added black and white patches to fill mising patches on A4 page:
-printtarg -v -s -M10 -pA4 -r -ii1 -T300 -a0.94 "A4-High Quality Target Plus Grays (1 page - 483 patches)-i1"
+printtarg -v -s -M10 -pA4 -r -b -ii1 -T300 -a0.94 "A4-High Quality Target Plus Grays (1 page - 483 patches)-i1"
 
 #Remove -r is randomized patch position is desired

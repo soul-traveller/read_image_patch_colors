@@ -465,6 +465,8 @@ Contains:
         • DENSITY_EXTREME_VALUES table
         • DEVICE_COMBINATION_VALUES table
 
+DENSITY\_EXTREME\_VALUES and DEVICE\_COMBINATION\_VALUES are based on static RGB values commonly used by ArgyllCMS targen, but XYZ values are made using supplied ICC profile. Also, no ink limiting is applied.
+
 Tags containing a dynamically calculated number are omitted if 0 (zero).
 
 #### COMP\_GREY\_STEPS
@@ -616,7 +618,8 @@ Script stops if:
 - sample_fraction exceeds allowed range
 - Grid geometry cannot be computed
 - Any I/O error occurs during file writing
-- File path to image, pre_cond_profile, or output directory is invalid
+- File path to image, pre\_cond\_profile, or output directory is invalid
+- If unsuported profile is specified for pre\_cond\_profile.
 
 
 # Workflow Summary
